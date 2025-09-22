@@ -1,0 +1,20 @@
+// Main export file for synq_manager package
+
+export 'src/auth/offline_auth_provider.dart';
+export 'src/background/sync_background_task.dart';
+export 'src/core/auth_provider.dart';
+export 'src/core/cloud_adapter.dart';
+export 'src/core/conflict_resolver.dart';
+export 'src/core/local_store.dart';
+export 'src/domain/auth_state.dart';
+export 'src/domain/conflict_event.dart';
+export 'src/domain/sync_entity.dart';
+export 'src/domain/sync_policy.dart';
+export 'src/domain/sync_result.dart';
+export 'src/domain/sync_status.dart';
+export 'src/storage/cache_model.dart';
+export 'src/storage/cache_operation.dart';
+export 'src/storage/hive_local_store.dart';
+export 'src/sync_manager.dart';
+export 'src/utils/logger.dart';
+export 'src/utils/network_checker.dart';
