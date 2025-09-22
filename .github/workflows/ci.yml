@@ -29,19 +29,15 @@ jobs:
           
       - name: Get dependencies
         run: flutter pub get
-        working-directory: module/synq_manager
         
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed .
-        working-directory: module/synq_manager
         
       - name: Analyze project source
         run: dart analyze --fatal-infos
-        working-directory: module/synq_manager
         
       - name: Check pub score
         run: dart pub publish --dry-run
-        working-directory: module/synq_manager
 
   test:
     name: Unit Tests
@@ -60,16 +56,14 @@ jobs:
           
       - name: Get dependencies
         run: flutter pub get
-        working-directory: module/synq_manager
         
       - name: Run tests
         run: flutter test --coverage
-        working-directory: module/synq_manager
         
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
-          file: module/synq_manager/coverage/lcov.info
+          file: coverage/lcov.info
           flags: unittests
           name: synq_manager
 
@@ -93,21 +87,20 @@ jobs:
           
       - name: Get dependencies
         run: flutter pub get
-        working-directory: module/synq_manager
         
       - name: Build example app
         run: flutter build apk --debug
-        working-directory: module/synq_manager/example
+        working-directory: example
         if: matrix.platform == 'ubuntu-latest'
         
       - name: Build example app (iOS)
         run: flutter build ios --no-codesign --debug
-        working-directory: module/synq_manager/example
+        working-directory: example
         if: matrix.platform == 'macos-latest'
         
       - name: Build example app (Windows)
         run: flutter build windows --debug
-        working-directory: module/synq_manager/example
+        working-directory: example
         if: matrix.platform == 'windows-latest'
 
   example-test:
@@ -127,15 +120,14 @@ jobs:
           
       - name: Get package dependencies
         run: flutter pub get
-        working-directory: module/synq_manager
         
       - name: Get example dependencies
         run: flutter pub get
-        working-directory: module/synq_manager/example
+        working-directory: example
         
       - name: Test example app
         run: flutter test
-        working-directory: module/synq_manager/example
+        working-directory: example
 
   documentation:
     name: Documentation Check
@@ -154,11 +146,9 @@ jobs:
           
       - name: Get dependencies
         run: flutter pub get
-        working-directory: module/synq_manager
         
       - name: Generate documentation
         run: dart doc .
-        working-directory: module/synq_manager
         
       - name: Check required files
         run: |
@@ -166,7 +156,6 @@ jobs:
           test -f CHANGELOG.md || (echo "CHANGELOG.md missing" && exit 1)
           test -f LICENSE || (echo "LICENSE missing" && exit 1)
           test -f pubspec.yaml || (echo "pubspec.yaml missing" && exit 1)
-        working-directory: module/synq_manager
 
   security:
     name: Security Scan
@@ -185,11 +174,9 @@ jobs:
           
       - name: Get dependencies
         run: flutter pub get
-        working-directory: module/synq_manager
         
       - name: Run security audit
         run: dart pub deps --json | jq '.packages[] | select(.kind == "direct")' | jq -r '.name'
-        working-directory: module/synq_manager
         continue-on-error: true
 
   publish-check:
@@ -211,18 +198,15 @@ jobs:
           
       - name: Get dependencies
         run: flutter pub get
-        working-directory: module/synq_manager
         
       - name: Dry run publish
         run: dart pub publish --dry-run
-        working-directory: module/synq_manager
         
       - name: Check package score
         run: |
           echo "Package is ready for publishing!"
           echo "Version: $(grep '^version:' pubspec.yaml | cut -d' ' -f2)"
           echo "Run 'dart pub publish' manually to publish to pub.dev"
-        working-directory: module/synq_manager
 
   publish:
     name: Publish to pub.dev
@@ -243,16 +227,14 @@ jobs:
           
       - name: Get dependencies
         run: flutter pub get
-        working-directory: module/synq_manager
         
-      - name: Setup pub credentials
+      - name: pub.dev credentials
         run: |
-          mkdir -p ~/.pub-cache
-          echo '${{ secrets.PUB_DEV_CREDENTIALS }}' > ~/.pub-cache/credentials.json
+          mkdir -p $HOME/.config/dart
+          echo '${{ secrets.PUB_JSON }}' >> $HOME/.config/dart/pub-credentials.json
           
       - name: Publish to pub.dev
         run: dart pub publish --force
-        working-directory: module/synq_manager
         
       - name: Create GitHub release notes
         uses: actions/github-script@v7
