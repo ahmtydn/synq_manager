@@ -64,12 +64,13 @@ class _NotesScreenState extends State<NotesScreen> {
           ElevatedButton(
             onPressed: () async {
               if (_titleController.text.isNotEmpty) {
+                final navigator = Navigator.of(context);
                 await _syncService.createNote(
                   _titleController.text,
                   _contentController.text,
                 );
                 if (mounted) {
-                  Navigator.of(context).pop();
+                  navigator.pop();
                 }
               }
             },

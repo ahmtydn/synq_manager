@@ -32,10 +32,7 @@ dependencies:
     sdk: flutter
   
   # Core storage dependencies
-  hive:
-    git:
-      url: https://github.com/isar/hive.git
-      ref: 52384ded658ad573d16137ea643130ad18153c07
+  hive_plus_secure: ^1.0.0
   isar_plus_flutter_libs: ^1.0.8
   flutter_secure_storage: ^9.2.2
   path_provider: ^2.1.3
