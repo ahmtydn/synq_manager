@@ -9,7 +9,7 @@ on:
     types: [ published ]
 
 env:
-  FLUTTER_VERSION: '3.35.0'
+  FLUTTER_VERSION: '3.35.1'
 
 jobs:
   analyze:
@@ -58,7 +58,7 @@ jobs:
         run: flutter pub get
         
       - name: Run tests
-        run: flutter test --coverage
+        run: flutter test test/ --coverage
         
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
@@ -126,7 +126,12 @@ jobs:
         working-directory: example
         
       - name: Test example app
-        run: flutter test
+        run: |
+          if [ -d "test" ]; then
+            flutter test
+          else
+            echo "No test directory found in example app, skipping tests"
+          fi
         working-directory: example
 
   documentation:
