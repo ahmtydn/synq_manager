@@ -168,7 +168,9 @@ class SyncService extends ChangeNotifier {
 
   @override
   void dispose() {
-    _syncManager.shutdown();
+    if (_isInitialized) {
+      _syncManager.shutdown();
+    }
     super.dispose();
   }
 }
