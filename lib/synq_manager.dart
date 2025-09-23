@@ -1,15 +1,14 @@
-export 'src/background/sync_background_task.dart';
-export 'src/core/cloud_adapter.dart';
-export 'src/core/conflict_resolver.dart';
-export 'src/core/local_store.dart';
-export 'src/domain/conflict_event.dart';
-export 'src/domain/sync_entity.dart';
-export 'src/domain/sync_policy.dart';
-export 'src/domain/sync_result.dart';
-export 'src/domain/sync_status.dart';
-export 'src/storage/cache_model.dart';
-export 'src/storage/cache_operation.dart';
-export 'src/storage/hive_local_store.dart';
-export 'src/sync_manager.dart';
-export 'src/utils/logger.dart';
-export 'src/utils/network_checker.dart';
+/// SynqManager - A powerful synchronization manager for Flutter apps
+///
+/// This library provides secure local storage with real-time state management,
+/// background cloud synchronization, and conflict resolution capabilities.
+library synq_manager;
+
+export 'src/core/synq_manager.dart';
+export 'src/events/event_types.dart';
+export 'src/models/conflict_resolution.dart';
+export 'src/models/sync_config.dart';
+export 'src/models/sync_data.dart';
+export 'src/models/sync_event.dart';
+export 'src/services/storage_service.dart';
+export 'src/services/sync_service.dart';

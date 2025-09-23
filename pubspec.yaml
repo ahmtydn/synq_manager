@@ -1,51 +1,25 @@
 name: synq_manager
-description: A robust offline-first synchronization layer for Flutter apps. Provides seamless sync between local storage and cloud backends with conflict resolution.
-version: 1.0.2
+description: A powerful synchronization manager for Flutter apps with secure local storage, real-time state management, and background cloud sync capabilities.
+version: 1.0.3
 homepage: https://github.com/ahmtydn/synq_manager
-repository: https://github.com/ahmtydn/synq_manager
-issue_tracker: https://github.com/ahmtydn/synq_manager/issues
-documentation: https://github.com/ahmtydn/synq_manager#readme
-
-
-topics:
-  - offline
-  - sync
-  - flutter
-  - offline-first
-  - hive
-
-platforms:
-  android:
-  ios:
-
+publish_to: none
 
 environment:
-  sdk: '>=3.1.0 <4.0.0'
-  flutter: ">=3.10.0"
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  
-  # Core storage dependencies
   hive_plus_secure: ^1.1.0
   isar_plus_flutter_libs: ^1.0.9
-  flutter_secure_storage: ^9.2.2
-  path_provider: ^2.1.3
-  
-  # Background sync
   workmanager: ^0.9.0+3
-  
-  # Network and utilities
-  connectivity_plus: ^6.0.3
-  uuid: ^4.4.0
-  
-  # Development utilities
-  meta: ^1.12.0
+  meta: ^1.9.0
+  path_provider: ^2.1.1
+  connectivity_plus: ^5.0.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
-  mockito: ^5.4.4
-  build_runner: ^2.4.11
+  build_runner: ^2.4.6
+  very_good_analysis: ^5.0.0
