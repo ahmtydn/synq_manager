@@ -1,5 +1,3 @@
-// Main export file for synq_manager package
-
 export 'src/auth/offline_auth_provider.dart';
 export 'src/background/sync_background_task.dart';
 export 'src/core/auth_provider.dart';

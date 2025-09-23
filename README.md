@@ -216,6 +216,10 @@ await authProvider.upgradeGuestAccount(
                    [ConflictResolver]
 ```
 
+## 📱 Platform Support
+
+SynQ Manager supports **Android** and **iOS** platforms, providing native mobile synchronization capabilities.
+
 ## 📱 Platform Setup
 
 ### Android Setup

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2]
+
+### Changed
+- 📱 **Platform Support**: Limited to Android and iOS only due to WorkManager dependency requirements
+- 🧹 Removed desktop and web platform files to reduce package size
+- 📝 Updated documentation to reflect mobile-only support
+
+### Removed
+- 🗑️ Linux, macOS, Windows, and Web platform support
+- 🗑️ Desktop-specific configuration files
+
 ## [1.0.1]
 
 ### Fixed
@@ -54,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Memory-efficient data streaming
 
 ### Technical Features
-- **Multi-platform support**: iOS, Android, Web, Desktop
+- **Mobile platform support**: iOS and Android (WorkManager requirement)
 - **Background sync**: Reliable synchronization even when app is closed
 - **Network awareness**: Automatic sync when connectivity is restored
 - **Data integrity**: Version-based conflict detection and resolution
