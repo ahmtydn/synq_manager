@@ -42,10 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Built-in strategies (local wins, remote wins, newer wins, prompt, merge)
   - Custom conflict resolver interface
   - Automatic conflict detection based on versions and timestamps
-- 🔐 Offline-first authentication:
-  - Guest mode that works completely offline
-  - Secure credential storage using flutter_secure_storage
-  - Account upgrade with data migration
 - 🎯 Type-safe APIs:
   - Generic support for any data model
   - Strongly typed interfaces throughout
@@ -71,7 +67,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Data integrity**: Version-based conflict detection and resolution
 - **Scalable architecture**: Modular design for easy extension
 - **Performance optimized**: Efficient change tracking and delta sync
-- **Security focused**: Encrypted local storage and secure authentication
 
 ### Dependencies
 - `hive`: Local storage with type adapters
@@ -101,7 +96,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned Features
 - 📱 Enhanced mobile platform support
 - 🔄 Incremental sync optimizations
-- 🔐 Advanced authentication providers
 - 📊 Analytics and metrics collection
 - 🌐 GraphQL adapter support
 - 💾 Isar storage adapter
