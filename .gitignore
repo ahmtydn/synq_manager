@@ -90,7 +90,7 @@ example/.flutter-plugins-dependencies
 example/pubspec.lock
 
 # Generated files
-*.g.dart
+
 *.freezed.dart
 *.chopper.dart
 lib/generated/
