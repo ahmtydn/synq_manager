@@ -155,7 +155,7 @@ class _NotesScreenState extends State<NotesScreen> {
     await Future.delayed(const Duration(milliseconds: 500));
 
     // In a real app, this would send data to your backend
-    print('📤 Cloud sync: ${localChanges.length} changes');
+    debugPrint('📤 Cloud sync: ${localChanges.length} changes');
 
     // Simulate occasional network errors
     if (DateTime.now().millisecond % 20 == 0) {
@@ -179,7 +179,7 @@ class _NotesScreenState extends State<NotesScreen> {
     await Future.delayed(const Duration(milliseconds: 300));
 
     // In a real app, this would fetch data from your backend
-    print('📥 Cloud fetch: lastSync=$lastSyncTimestamp');
+    debugPrint('📥 Cloud fetch: lastSync=$lastSyncTimestamp');
 
     // Return empty data for demo (in real app, return actual cloud data)
     return {};
