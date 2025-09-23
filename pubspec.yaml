@@ -2,7 +2,6 @@ name: synq_manager
 description: A powerful synchronization manager for Flutter apps with secure local storage, real-time state management, and background cloud sync capabilities.
 version: 1.0.3
 homepage: https://github.com/ahmtydn/synq_manager
-publish_to: none
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
