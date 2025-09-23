@@ -335,8 +335,12 @@ class SyncService<T> {
       }
     }
 
-    // If no specific pending changes, get all modified since last sync
-    if (changes.isEmpty && _lastSyncTimestamp > 0) {
+    // If first sync (never synced before), get all local data
+    if (_lastSyncTimestamp == 0) {
+      final allData = await storageService.getAll();
+      changes.addAll(allData);
+    } else if (changes.isEmpty && _lastSyncTimestamp > 0) {
+      // If no specific pending changes, get all modified since last sync
       final modifiedData =
           await storageService.getModifiedSince(_lastSyncTimestamp);
       changes.addAll(modifiedData);
