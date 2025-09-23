@@ -1,6 +1,6 @@
 name: synq_manager
 description: A robust offline-first synchronization layer for Flutter apps. Provides seamless sync between local storage and cloud backends with conflict resolution.
-version: 1.0.0
+version: 1.0.1
 homepage: https://github.com/ahmtydn/synq_manager
 repository: https://github.com/ahmtydn/synq_manager
 issue_tracker: https://github.com/ahmtydn/synq_manager/issues
