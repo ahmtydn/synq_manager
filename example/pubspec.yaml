@@ -17,16 +17,7 @@ dependencies:
   synq_manager:
     path: ../
   
-  # Core dependencies
-  hive:
-    git:
-      url: https://github.com/isar/hive.git
-      ref: 52384ded658ad573d16137ea643130ad18153c07
-  isar_plus_flutter_libs: ^1.0.9
-  workmanager: ^0.9.0+3
-  
   # UI and state management
-  provider: ^6.1.2
   cupertino_icons: ^1.0.6
   uuid: ^4.5.1
 
