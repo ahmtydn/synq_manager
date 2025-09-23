@@ -16,9 +16,6 @@ abstract class SyncEntity {
   /// Flag to track if this entity has local changes that need to be synced
   bool get isDirty;
 
-  /// Optional guest ID for guest mode support
-  String? get guestId;
-
   /// Convert entity to JSON for storage and transmission
   Map<String, dynamic> toJson();
 
@@ -28,7 +25,6 @@ abstract class SyncEntity {
     int? version,
     bool? isDeleted,
     bool? isDirty,
-    String? guestId,
   });
 
   /// Create a copy of this entity marking it as dirty (needs sync)

@@ -89,15 +89,9 @@ class HiveLocalStore<T extends SyncCacheModel> implements LocalStore<T> {
   }
 
   @override
-  Stream<List<T>> watchAll() {
+  StreamSubscription<WatchEvent<Object, T>> watch({String? key}) {
     _ensureInitialized();
-    return _cacheOperation.watchAll();
-  }
-
-  @override
-  Stream<T?> watch(String id) {
-    _ensureInitialized();
-    return _cacheOperation.watch(id);
+    return _cacheOperation.watch(key: key);
   }
 
   @override
@@ -162,15 +156,9 @@ class HiveCacheOperation<T extends CacheModel> extends CacheOperation<T> {
   final String? encryptionKey;
   late final Box<T> _box;
 
-  final StreamController<List<T>> _allController =
-      StreamController<List<T>>.broadcast();
-  final Map<String, StreamController<T?>> _itemControllers = {};
-
   @override
   void add(T item) {
     _box.put(item.id, item);
-    _notifyChanges();
-    _notifyItemChange(item.id, item);
   }
 
   @override
@@ -179,22 +167,11 @@ class HiveCacheOperation<T extends CacheModel> extends CacheOperation<T> {
       for (final item in items) item.id: item,
     };
     _box.putAll(itemMap);
-    _notifyChanges();
-
-    for (final item in items) {
-      _notifyItemChange(item.id, item);
-    }
   }
 
   @override
   void clear() {
-    final keys = List<String>.from(_box.keys);
     _box.clear();
-    _notifyChanges();
-
-    for (final key in keys) {
-      _notifyItemChange(key, null);
-    }
   }
 
   @override
@@ -214,42 +191,17 @@ class HiveCacheOperation<T extends CacheModel> extends CacheOperation<T> {
   @override
   void remove(String id) {
     _box.delete(id);
-    _notifyChanges();
-    _notifyItemChange(id, null);
   }
 
   @override
-  Stream<List<T>> watchAll() {
-    return _allController.stream;
-  }
-
-  @override
-  Stream<T?> watch(String id) {
-    if (!_itemControllers.containsKey(id)) {
-      _itemControllers[id] = StreamController<T?>.broadcast();
-    }
-    return _itemControllers[id]!.stream;
+  StreamSubscription<WatchEvent<Object, T>> watch({String? key}) {
+    final stream = _box.watch(key: key);
+    final subscription = stream.listen((null));
+    return subscription;
   }
 
   @override
   void close() {
-    _allController.close();
-    for (final controller in _itemControllers.values) {
-      controller.close();
-    }
-    _itemControllers.clear();
     Hive.closeAllBoxes();
-  }
-
-  void _notifyChanges() {
-    if (!_allController.isClosed) {
-      _allController.add(getAll());
-    }
-  }
-
-  void _notifyItemChange(String id, T? item) {
-    if (_itemControllers.containsKey(id) && !_itemControllers[id]!.isClosed) {
-      _itemControllers[id]!.add(item);
-    }
   }
 }

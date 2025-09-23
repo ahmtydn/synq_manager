@@ -152,7 +152,6 @@ class TestSyncEntity extends SyncEntity {
     required this.isDeleted,
     required this.isDirty,
     required this.name,
-    this.guestId,
   });
 
   @override
@@ -170,9 +169,6 @@ class TestSyncEntity extends SyncEntity {
   @override
   final bool isDirty;
 
-  @override
-  final String? guestId;
-
   final String name;
 
   @override
@@ -183,7 +179,6 @@ class TestSyncEntity extends SyncEntity {
       'version': version,
       'isDeleted': isDeleted,
       'isDirty': isDirty,
-      'guestId': guestId,
       'name': name,
     };
   }
@@ -202,7 +197,6 @@ class TestSyncEntity extends SyncEntity {
       version: version ?? this.version,
       isDeleted: isDeleted ?? this.isDeleted,
       isDirty: isDirty ?? this.isDirty,
-      guestId: guestId ?? this.guestId,
       name: name,
     );
   }

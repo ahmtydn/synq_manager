@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:hive_plus_secure/hive_plus_secure.dart';
 import 'package:synq_manager/src/domain/sync_entity.dart';
 
 /// Abstract interface for local storage operations
@@ -27,12 +30,9 @@ abstract class LocalStore<T extends SyncEntity> {
   /// Get entities that have been deleted locally
   Future<List<T>> getDeletedEntities();
 
-  /// Watch for changes to all entities
-  /// This stream should emit whenever entities are added, updated, or deleted
-  Stream<List<T>> watchAll();
-
-  /// Watch for changes to a specific entity
-  Stream<T?> watch(String id);
+  /// Watch for changes to all items in the cache
+  /// If provided, the [key] parameter filters events to a specific item ID
+  StreamSubscription<WatchEvent<Object, T>> watch({String? key});
 
   /// Clear all entities from local storage
   Future<void> clear();

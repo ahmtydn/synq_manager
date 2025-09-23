@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:synq_manager/src/background/sync_background_task.dart';
-import 'package:synq_manager/src/core/auth_provider.dart';
 import 'package:synq_manager/src/core/cloud_adapter.dart';
 import 'package:synq_manager/src/core/conflict_resolver.dart';
 import 'package:synq_manager/src/core/local_store.dart';
@@ -30,7 +29,6 @@ class SyncManager {
   final Map<Type, CloudAdapter> _cloudAdapters = {};
   final Map<Type, ConflictResolver> _conflictResolvers = {};
 
-  AuthProvider? _authProvider;
   Timer? _periodicSyncTimer;
   bool _initialized = false;
 
@@ -51,7 +49,6 @@ class SyncManager {
   Future<void> initialize({
     required List<LocalStore> stores,
     required Map<Type, CloudAdapter> adapters,
-    AuthProvider? authProvider,
     Map<Type, ConflictResolver>? conflictResolvers,
   }) async {
     if (_initialized) {
@@ -70,12 +67,6 @@ class SyncManager {
     for (final entry in adapters.entries) {
       await entry.value.initialize();
       _cloudAdapters[entry.key] = entry.value;
-    }
-
-    // Set up auth provider
-    if (authProvider != null) {
-      _authProvider = authProvider;
-      await _authProvider!.initialize();
     }
 
     // Set up conflict resolvers
@@ -432,10 +423,6 @@ class SyncManager {
     for (final adapter in _cloudAdapters.values) {
       await adapter.dispose();
     }
-
-    // Dispose auth provider
-    await _authProvider?.dispose();
-
     // Dispose network checker
     await _networkChecker.dispose();
 
