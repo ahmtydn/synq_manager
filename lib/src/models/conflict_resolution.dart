@@ -49,13 +49,20 @@ class DataConflict<T> {
   }) : detectedAt = detectedAt ?? DateTime.now();
 
   /// Creates instance from JSON
-  factory DataConflict.fromJson(Map<String, dynamic> json) {
+  factory DataConflict.fromJson(
+    Map<String, dynamic> json, {
+    FromJsonFunction<T>? fromJson,
+  }) {
     return DataConflict<T>(
       key: json['key'] as String,
-      localData:
-          SyncData<T>.fromJson(json['localData'] as Map<String, dynamic>),
-      remoteData:
-          SyncData<T>.fromJson(json['remoteData'] as Map<String, dynamic>),
+      localData: SyncData<T>.fromJson(
+        json['localData'] as Map<String, dynamic>,
+        fromJson: fromJson,
+      ),
+      remoteData: SyncData<T>.fromJson(
+        json['remoteData'] as Map<String, dynamic>,
+        fromJson: fromJson,
+      ),
       strategy: ConflictResolutionStrategy.values.firstWhere(
         (e) => e.name == json['strategy'],
         orElse: () => ConflictResolutionStrategy.useLatestTimestamp,
@@ -157,11 +164,11 @@ class DataConflict<T> {
   }
 
   /// Converts to JSON for serialization
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toJson({ToJsonFunction<T>? toJson}) {
     return {
       'key': key,
-      'localData': localData.toJson(),
-      'remoteData': remoteData.toJson(),
+      'localData': localData.toJson(toJson: toJson),
+      'remoteData': remoteData.toJson(toJson: toJson),
       'strategy': strategy.name,
       'metadata': metadata,
       'detectedAt': detectedAt.millisecondsSinceEpoch,
@@ -205,12 +212,20 @@ class ConflictResolution<T> {
   }) : resolvedAt = resolvedAt ?? DateTime.now();
 
   /// Creates instance from JSON
-  factory ConflictResolution.fromJson(Map<String, dynamic> json) {
+  factory ConflictResolution.fromJson(
+    Map<String, dynamic> json, {
+    FromJsonFunction<T>? fromJson,
+  }) {
     return ConflictResolution<T>(
-      conflict:
-          DataConflict<T>.fromJson(json['conflict'] as Map<String, dynamic>),
+      conflict: DataConflict<T>.fromJson(
+        json['conflict'] as Map<String, dynamic>,
+        fromJson: fromJson,
+      ),
       resolvedData: json['resolvedData'] != null
-          ? SyncData<T>.fromJson(json['resolvedData'] as Map<String, dynamic>)
+          ? SyncData<T>.fromJson(
+              json['resolvedData'] as Map<String, dynamic>,
+              fromJson: fromJson,
+            )
           : null,
       result: ConflictResolutionResult.values.firstWhere(
         (e) => e.name == json['result'],
@@ -247,10 +262,10 @@ class ConflictResolution<T> {
   bool get hasFailed => result == ConflictResolutionResult.failed;
 
   /// Converts to JSON for serialization
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toJson({ToJsonFunction<T>? toJson}) {
     return {
-      'conflict': conflict.toJson(),
-      'resolvedData': resolvedData?.toJson(),
+      'conflict': conflict.toJson(toJson: toJson),
+      'resolvedData': resolvedData?.toJson(toJson: toJson),
       'result': result.name,
       'error': error?.toString(),
       'resolvedAt': resolvedAt.millisecondsSinceEpoch,

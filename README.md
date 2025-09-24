@@ -155,9 +155,13 @@ Future<void> initializeSynq() async {
     ),
     cloudSyncFunction: _syncToCloud,
     cloudFetchFunction: _fetchFromCloud,
+    fromJson: UserProfile.fromJson, // Function to deserialize UserProfile from JSON
+    toJson: (profile) => profile.toJson(), // Function to serialize UserProfile to JSON
   );
 }
 ```
+
+**Important**: The `fromJson` and `toJson` parameters are required when working with complex custom objects that need proper JSON serialization/deserialization. For simple types like `String`, `int`, `Map<String, dynamic>`, these parameters can be omitted.
 
 ### 2. Implement Cloud Functions
 

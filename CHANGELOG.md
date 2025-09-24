@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5]
+
+### Added
+- 🔧 **Generic Type Serialization**: Added `fromJson` and `toJson` function parameters to `SynqManager.getInstance()`
+- 📦 **Custom Object Support**: Improved support for complex custom data types with proper JSON serialization/deserialization
+- 🛠️ **Type-Safe Serialization**: Enhanced type safety for generic types T through configurable serialization functions
+
+### Changed
+- ⚡ **Breaking Change**: `SynqManager.getInstance()` now accepts optional `fromJson` and `toJson` parameters for custom object serialization
+- 📝 **Updated Documentation**: Enhanced README and example documentation with serialization function usage examples
+
 ## [1.0.4]
 
 ### Enhanced

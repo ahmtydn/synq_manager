@@ -1,5 +1,11 @@
 import 'package:meta/meta.dart';
 
+/// Function type for creating T from JSON
+typedef FromJsonFunction<T> = T Function(Map<String, dynamic> json);
+
+/// Function type for converting T to JSON
+typedef ToJsonFunction<T> = Map<String, dynamic> Function(T object);
+
 /// Generic data container for synchronization operations
 @immutable
 class SyncData<T> {
@@ -14,10 +20,24 @@ class SyncData<T> {
   });
 
   /// Creates instance from JSON
-  factory SyncData.fromJson(Map<String, dynamic> json) {
+  factory SyncData.fromJson(
+    Map<String, dynamic> json, {
+    FromJsonFunction<T>? fromJson,
+  }) {
+    T? value;
+    if (json['value'] != null && fromJson != null) {
+      if (json['value'] is Map<String, dynamic>) {
+        value = fromJson(json['value'] as Map<String, dynamic>);
+      } else {
+        value = json['value'] as T?;
+      }
+    } else {
+      value = json['value'] as T?;
+    }
+
     return SyncData<T>(
       key: json['key'] as String,
-      value: json['value'] as T?,
+      value: value,
       timestamp: json['timestamp'] as int,
       version: json['version'] as int? ?? 1,
       metadata: Map<String, dynamic>.from(json['metadata'] as Map? ?? {}),
@@ -79,10 +99,17 @@ class SyncData<T> {
   }
 
   /// Converts to JSON for serialization
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toJson({ToJsonFunction<T>? toJson}) {
+    dynamic jsonValue;
+    if (value != null && toJson != null) {
+      jsonValue = toJson(value as T);
+    } else {
+      jsonValue = value;
+    }
+
     return {
       'key': key,
-      'value': value,
+      'value': jsonValue,
       'timestamp': timestamp,
       'version': version,
       'metadata': metadata,

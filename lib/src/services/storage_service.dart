@@ -14,6 +14,8 @@ class StorageService<T> {
     required this.boxName,
     required this.encryptionKey,
     required this.maxSizeMiB,
+    required this.fromJson,
+    required this.toJson,
   });
 
   /// Box name for storage
@@ -24,6 +26,12 @@ class StorageService<T> {
 
   /// Maximum storage size in MiB
   final int maxSizeMiB;
+
+  /// Function to deserialize T from JSON
+  final FromJsonFunction<T>? fromJson;
+
+  /// Function to serialize T to JSON
+  final ToJsonFunction<T>? toJson;
 
   /// Hive box instance
   Box<SyncData<T>>? _box;
@@ -40,11 +48,15 @@ class StorageService<T> {
     required String boxName,
     String? encryptionKey,
     int maxSizeMiB = 5,
+    FromJsonFunction<T>? fromJson,
+    ToJsonFunction<T>? toJson,
   }) async {
     final service = StorageService<T>._(
       boxName: boxName,
       encryptionKey: encryptionKey,
       maxSizeMiB: maxSizeMiB,
+      fromJson: fromJson,
+      toJson: toJson,
     );
 
     await service._initialize();
@@ -63,7 +75,10 @@ class StorageService<T> {
       // Register adapter for SyncData
       Hive.registerAdapter<SyncData<T>>(
         'SyncData_$T',
-        (json) => SyncData<T>.fromJson(json as Map<String, dynamic>),
+        (json) => SyncData<T>.fromJson(
+          json as Map<String, dynamic>,
+          fromJson: fromJson,
+        ),
         SyncData<T>,
       );
 

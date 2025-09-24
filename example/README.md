@@ -42,6 +42,26 @@ This example app demonstrates:
 - Flutter SDK (>=3.0.0)
 - Dart SDK (>=3.0.0)
 
+### Using Custom Data Models
+
+This example uses `Map<String, dynamic>` as the data type, which doesn't require fromJson/toJson functions. However, if you want to use custom data models like the `Note` class, you would initialize SynqManager like this:
+
+```dart
+_synqManager = await SynqManager.getInstance<Note>(
+  instanceName: 'notes_manager',
+  config: const SyncConfig(
+    syncInterval: Duration(seconds: 30),
+    encryptionKey: 'example_encryption_key_32_chars!',
+    enableBackgroundSync: true,
+    enableConflictResolution: true,
+  ),
+  cloudSyncFunction: _mockCloudSync,
+  cloudFetchFunction: _mockCloudFetch,
+  fromJson: Note.fromJson, // Add this for custom objects
+  toJson: (note) => note.toJson(), // Add this for custom objects
+);
+```
+
 ### Installation
 
 1. Navigate to the example directory:

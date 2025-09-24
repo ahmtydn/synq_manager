@@ -45,11 +45,15 @@ class SynqManager<T> {
   /// [config] - Configuration for synchronization
   /// [cloudSyncFunction] - Function to push data to cloud
   /// [cloudFetchFunction] - Function to fetch data from cloud
+  /// [fromJson] - Function to deserialize T from JSON
+  /// [toJson] - Function to serialize T to JSON
   static Future<SynqManager<T>> getInstance<T>({
     required String instanceName,
     SyncConfig? config,
     required CloudSyncFunction<T> cloudSyncFunction,
     required CloudFetchFunction<T> cloudFetchFunction,
+    FromJsonFunction<T>? fromJson,
+    ToJsonFunction<T>? toJson,
   }) async {
     final key = '${instanceName}_$T';
 
@@ -67,6 +71,8 @@ class SynqManager<T> {
       boxName: instanceName,
       encryptionKey: finalConfig.encryptionKey,
       maxSizeMiB: finalConfig.maxStorageSize,
+      fromJson: fromJson,
+      toJson: toJson,
     );
 
     final syncService = await SyncService.create<T>(

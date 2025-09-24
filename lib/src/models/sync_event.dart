@@ -145,7 +145,10 @@ class SynqEvent<T> {
   }
 
   /// Creates instance from JSON
-  factory SynqEvent.fromJson(Map<String, dynamic> json) {
+  factory SynqEvent.fromJson(
+    Map<String, dynamic> json, {
+    FromJsonFunction<T>? fromJson,
+  }) {
     return SynqEvent<T>(
       type: SynqEventType.values.firstWhere(
         (e) => e.name == json['type'],
@@ -153,7 +156,10 @@ class SynqEvent<T> {
       ),
       key: json['key'] as String,
       data: json['data'] != null
-          ? SyncData<T>.fromJson(json['data'] as Map<String, dynamic>)
+          ? SyncData<T>.fromJson(
+              json['data'] as Map<String, dynamic>,
+              fromJson: fromJson,
+            )
           : null,
       error: json['error'],
       timestamp:
@@ -181,11 +187,11 @@ class SynqEvent<T> {
   final Map<String, dynamic> metadata;
 
   /// Converts to JSON for serialization
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toJson({ToJsonFunction<T>? toJson}) {
     return {
       'type': type.name,
       'key': key,
-      'data': data?.toJson(),
+      'data': data?.toJson(toJson: toJson),
       'error': error?.toString(),
       'timestamp': timestamp,
       'metadata': metadata,
