@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8]
+
+### Fixed
+- 🔧 **Critical Sync Logic Bug**: Fixed major issue where `cloudFetchFunction` was never called
+- ⚡ **Proper Conflict Detection**: Implemented correct conflict detection by fetching remote data first
+- 🔄 **Improved Sync Flow**: Restructured sync process to properly use both `cloudFetchFunction` and `cloudSyncFunction`
+- 📊 **Separation of Concerns**: `cloudFetchFunction` now only handles data fetching, `cloudSyncFunction` only handles data pushing
+- 🚀 **Two-Phase Sync**: Added separate initial sync and incremental sync modes
+- 🔍 **Better Pending Changes Logic**: Fixed logic to only track actual pending changes, not all data
+
+### Enhanced
+- 🎯 **Cleaner Function Responsibilities**: Each cloud function now has a single, well-defined responsibility
+- 📈 **More Efficient Syncing**: Reduced unnecessary data transfers and improved sync performance
+- 🛡️ **Robust Conflict Handling**: Conflicts are now properly detected and handled before data corruption
+
+### Breaking Changes
+- ⚠️ **CloudSyncFunction Behavior**: `cloudSyncFunction` should now only handle pushing data, not conflict detection
+
 ## [1.0.7]
 
 ### Added

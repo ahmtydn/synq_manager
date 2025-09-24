@@ -294,15 +294,11 @@ class SyncService<T> {
     _eventController.add(SynqEvent<T>.syncStart(key: '__sync__'));
 
     try {
-      // Get all pending changes
-      final localChanges = await _getPendingChanges();
-
-      if (localChanges.isEmpty && _lastSyncTimestamp > 0) {
-        // No local changes, just fetch remote updates
-        await _fetchRemoteUpdates();
+      // Handle first-time sync differently
+      if (_lastSyncTimestamp == 0) {
+        await _performInitialSync();
       } else {
-        // Perform full sync with local changes
-        await _performFullSync(localChanges);
+        await _performIncrementalSync();
       }
 
       _lastSyncTimestamp = DateTime.now().millisecondsSinceEpoch;
@@ -323,34 +319,84 @@ class SyncService<T> {
     }
   }
 
+  /// Performs initial sync when no previous sync exists
+  Future<void> _performInitialSync() async {
+    // Step 1: Get all local data for initial sync
+    final allLocalData = await storageService.getAll();
+
+    // Step 2: Fetch all remote data
+    final remoteData = await _fetchRemoteUpdates();
+
+    // Step 3: Detect conflicts
+    final conflicts = await _detectConflicts(allLocalData, remoteData);
+
+    // Step 4: Push non-conflicted local data
+    final cleanLocalChanges = _removeConflictedItems(allLocalData, conflicts);
+    if (cleanLocalChanges.isNotEmpty) {
+      await _pushLocalChanges(cleanLocalChanges);
+    }
+
+    // Step 5: Apply non-conflicted remote data
+    await _processRemoteData(remoteData, conflicts);
+
+    // Step 6: Handle conflicts
+    await _handleConflicts(conflicts);
+
+    // Step 7: Clear all pending changes (initial sync complete)
+    _pendingChanges.clear();
+  }
+
+  /// Performs incremental sync with only changed data
+  Future<void> _performIncrementalSync() async {
+    // Step 1: Always fetch remote updates first to detect conflicts
+    final remoteData = await _fetchRemoteUpdates();
+
+    // Step 2: Get pending local changes
+    final localChanges = await _getPendingChanges();
+
+    // Step 3: Detect conflicts between local and remote data
+    final conflicts = await _detectConflicts(localChanges, remoteData);
+
+    // Step 4: If we have local changes, push them to remote
+    if (localChanges.isNotEmpty) {
+      // Remove conflicted items from local changes for now
+      final cleanLocalChanges = _removeConflictedItems(localChanges, conflicts);
+
+      if (cleanLocalChanges.isNotEmpty) {
+        await _pushLocalChanges(cleanLocalChanges);
+      }
+    }
+
+    // Step 5: Apply remote changes (non-conflicted ones)
+    await _processRemoteData(remoteData, conflicts);
+
+    // Step 6: Handle conflicts
+    await _handleConflicts(conflicts);
+
+    // Step 7: Clear pending changes for non-conflicted items
+    _clearProcessedChanges(localChanges, conflicts);
+  }
+
   /// Gets pending changes from storage
   Future<Map<String, SyncData<T>>> _getPendingChanges() async {
     final changes = <String, SyncData<T>>{};
 
-    // Get all pending changes
+    // Only get explicitly tracked pending changes
     for (final key in List<String>.from(_pendingChanges)) {
       final data = await storageService.get(key);
       if (data != null) {
         changes[key] = data;
+      } else {
+        // Remove non-existent keys from pending list
+        _pendingChanges.remove(key);
       }
-    }
-
-    // If first sync (never synced before), get all local data
-    if (_lastSyncTimestamp == 0) {
-      final allData = await storageService.getAll();
-      changes.addAll(allData);
-    } else if (changes.isEmpty && _lastSyncTimestamp > 0) {
-      // If no specific pending changes, get all modified since last sync
-      final modifiedData =
-          await storageService.getModifiedSince(_lastSyncTimestamp);
-      changes.addAll(modifiedData);
     }
 
     return changes;
   }
 
-  /// Fetches remote updates
-  Future<void> _fetchRemoteUpdates() async {
+  /// Fetches remote updates and returns the data
+  Future<Map<String, SyncData<T>>> _fetchRemoteUpdates() async {
     _eventController.add(SynqEvent<T>.cloudFetchStart(key: '__cloud_fetch__'));
 
     try {
@@ -364,7 +410,7 @@ class SyncService<T> {
         metadata: {'remoteDataCount': remoteData.length},
       ));
 
-      await _processRemoteData(remoteData);
+      return remoteData;
     } catch (error) {
       _eventController.add(SynqEvent<T>.cloudFetchError(
         key: '__cloud_fetch__',
@@ -375,8 +421,52 @@ class SyncService<T> {
     }
   }
 
-  /// Performs full synchronization with local changes
-  Future<void> _performFullSync(Map<String, SyncData<T>> localChanges) async {
+  /// Detects conflicts between local and remote data
+  Future<List<DataConflict<T>>> _detectConflicts(
+    Map<String, SyncData<T>> localChanges,
+    Map<String, SyncData<T>> remoteData,
+  ) async {
+    final conflicts = <DataConflict<T>>[];
+
+    for (final entry in localChanges.entries) {
+      final key = entry.key;
+      final localItem = entry.value;
+      final remoteItem = remoteData[key];
+
+      if (remoteItem != null) {
+        // Both local and remote have changes
+        if (localItem.version != remoteItem.version &&
+            localItem.timestamp != remoteItem.timestamp) {
+          // Version or timestamp mismatch indicates conflict
+          conflicts.add(
+            DataConflict<T>(
+              key: key,
+              localData: localItem,
+              remoteData: remoteItem,
+              strategy: ConflictResolutionStrategy.manual,
+            ),
+          );
+        }
+      }
+    }
+
+    return conflicts;
+  }
+
+  /// Removes conflicted items from local changes map
+  Map<String, SyncData<T>> _removeConflictedItems(
+    Map<String, SyncData<T>> localChanges,
+    List<DataConflict<T>> conflicts,
+  ) {
+    final cleanChanges = Map<String, SyncData<T>>.from(localChanges);
+    for (final conflict in conflicts) {
+      cleanChanges.remove(conflict.key);
+    }
+    return cleanChanges;
+  }
+
+  /// Pushes local changes to remote
+  Future<void> _pushLocalChanges(Map<String, SyncData<T>> localChanges) async {
     _eventController.add(SynqEvent<T>.cloudSyncStart(
       key: '__cloud_sync__',
       metadata: {'localChangesCount': localChanges.length},
@@ -391,19 +481,9 @@ class SyncService<T> {
           key: '__cloud_sync__',
           metadata: {
             'remoteDataCount': result.remoteData.length,
-            'conflictsCount': result.conflicts.length,
             'syncMetadata': result.metadata,
           },
         ));
-
-        // Process remote data
-        await _processRemoteData(result.remoteData);
-
-        // Handle conflicts
-        await _handleConflicts(result.conflicts);
-
-        // Clear pending changes
-        _pendingChanges.clear();
       } else {
         final error =
             result.error ?? Exception('Sync failed without specific error');
@@ -418,22 +498,45 @@ class SyncService<T> {
         throw error;
       }
     } catch (error) {
-      if (error.runtimeType.toString() != 'SynqEvent<T>') {
-        _eventController.add(SynqEvent<T>.cloudSyncError(
-          key: '__cloud_sync__',
-          error: error,
-          metadata: {'operation': 'cloudSyncFunction'},
-        ));
-      }
+      _eventController.add(SynqEvent<T>.cloudSyncError(
+        key: '__cloud_sync__',
+        error: error,
+        metadata: {'operation': 'cloudSyncFunction'},
+      ));
       rethrow;
     }
   }
 
-  /// Processes remote data and handles conflicts
-  Future<void> _processRemoteData(Map<String, SyncData<T>> remoteData) async {
+  /// Clears processed changes from pending queue
+  void _clearProcessedChanges(
+    Map<String, SyncData<T>> localChanges,
+    List<DataConflict<T>> conflicts,
+  ) {
+    // Remove successfully processed items from pending changes
+    final conflictKeys = conflicts.map((c) => c.key).toSet();
+    for (final key in localChanges.keys) {
+      if (!conflictKeys.contains(key)) {
+        _pendingChanges.remove(key);
+      }
+    }
+  }
+
+  /// Processes remote data, excluding conflicted items
+  Future<void> _processRemoteData(
+    Map<String, SyncData<T>> remoteData,
+    List<DataConflict<T>> conflicts,
+  ) async {
+    final conflictKeys = conflicts.map((c) => c.key).toSet();
+
     for (final entry in remoteData.entries) {
       final key = entry.key;
       final remoteItem = entry.value;
+
+      // Skip conflicted items - they will be handled separately
+      if (conflictKeys.contains(key)) {
+        continue;
+      }
+
       final localItem = await storageService.get(key);
 
       if (localItem == null) {
