@@ -4,11 +4,12 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Flutter](https://img.shields.io/badge/Flutter-3.0%2B-blue.svg)](https://flutter.dev)
 
-A powerful synchronization manager for Flutter apps with secure local storage, real-time state management, and background cloud sync capabilities.
+A powerful synchronization manager for Flutter apps with secure local storage, real-time state management, background cloud sync capabilities, and **Socket.io-style event handling**.
 
 ## ✨ Features
 
-- 🔄 **Real-time Synchronization**: Automatic cloud sync with configurable intervals
+-  **Socket.io Style Events**: Intuitive event handling with `onInit`, `onCreate`, `onUpdate`, `onDelete`
+-  **Real-time Synchronization**: Automatic cloud sync with configurable intervals
 - 📱 **Background Sync**: Uses WorkManager for background synchronization when app is closed
 - 🔐 **Secure Storage**: Encrypted local storage with Hive Plus Secure
 - ⚔️ **Conflict Resolution**: Intelligent conflict handling with multiple resolution strategies
@@ -18,6 +19,7 @@ A powerful synchronization manager for Flutter apps with secure local storage, r
 - 🔧 **Customizable**: Flexible configuration for different use cases
 - 📊 **Event-driven**: Real-time event streams for UI updates
 - 🏠 **Local-first**: Works offline, syncs when online
+- ⭐ **Builder Pattern**: Quick setup with fluent API
 
 ## 🚀 Platform Support
 
@@ -34,7 +36,7 @@ Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  synq_manager: ^1.0.0
+  synq_manager: latest_version
 ```
 
 Run:
@@ -365,6 +367,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         child: Icon(Icons.add),
       ),
     );
+          ),
+        ),
+      ],
+    );
   }
   
   @override
@@ -373,6 +379,222 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     super.dispose();
   }
 }
+```
+
+### 3B. Socket.io Style Usage (New! 🚀)
+
+For a more intuitive and less boilerplate approach, use the new Socket.io-style API:
+
+```dart
+class UserProfileScreen extends StatefulWidget {
+  @override
+  _UserProfileScreenState createState() => _UserProfileScreenState();
+}
+
+class _UserProfileScreenState extends State<UserProfileScreen> {
+  List<UserProfile> _profiles = [];
+  bool _syncing = false;
+  SynqListeners<UserProfile>? _listeners;
+  
+  @override
+  void initState() {
+    super.initState();
+    _setupSocketStyleListeners();
+  }
+  
+  void _setupSocketStyleListeners() async {
+    // Method 1: Builder Pattern - Quick Setup
+    _listeners = await userManager.onInit((allProfiles) {
+      // Called when manager is ready with ALL data
+      print('📥 Loaded ${allProfiles.length} profiles');
+      setState(() {
+        _profiles = allProfiles.values.toList();
+      });
+    })
+    .onCreate((key, profile) {
+      // Called when NEW profile is created - only new data
+      print('✨ New profile created: ${profile.name}');
+      setState(() {
+        _profiles.add(profile);
+      });
+    })
+    .onUpdate((key, profile) {
+      // Called when profile is updated - only updated data
+      print('📝 Profile updated: ${profile.name}');
+      setState(() {
+        final index = _profiles.indexWhere((p) => p.id == key);
+        if (index != -1) _profiles[index] = profile;
+      });
+    })
+    .onDelete((key) {
+      // Called when profile is deleted - only key
+      print('🗑️ Profile deleted: $key');
+      setState(() {
+        _profiles.removeWhere((p) => p.id == key);
+      });
+    })
+    .onSyncStart(() {
+      setState(() => _syncing = true);
+    })
+    .onSyncComplete(() {
+      setState(() => _syncing = false);
+      _showMessage('Sync completed! ✅');
+    })
+    .onError((error) {
+      setState(() => _syncing = false);
+      _showError('Sync failed: $error');
+    })
+    .start(); // Don't forget to call start()!
+  }
+  
+  // Method 2: Fluent Interface - More Control
+  void _setupFluentListeners() {
+    _listeners = userManager.on()
+      ..onInit((allProfiles) {
+        setState(() => _profiles = allProfiles.values.toList());
+      })
+      ..onChange((key, profile, action) {
+        // Single handler for all changes
+        print('$action: $key');
+        switch (action) {
+          case 'create':
+            setState(() => _profiles.add(profile!));
+            break;
+          case 'update':
+            setState(() {
+              final index = _profiles.indexWhere((p) => p.id == key);
+              if (index != -1) _profiles[index] = profile!;
+            });
+            break;
+          case 'delete':
+            setState(() => _profiles.removeWhere((p) => p.id == key));
+            break;
+        }
+      })
+      ..onSyncStart(() => setState(() => _syncing = true))
+      ..onSyncComplete(() => setState(() => _syncing = false))
+      ..onConnectionChange((isOnline) {
+        _showMessage(isOnline ? 'Back online! 🌐' : 'Gone offline 📴');
+      });
+  }
+  
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+  
+  void _showError(String error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('User Profiles'),
+        actions: [
+          if (_syncing) 
+            Padding(
+              padding: EdgeInsets.all(16),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              icon: Icon(Icons.sync),
+              onPressed: () => userManager.sync(),
+            ),
+        ],
+      ),
+      body: ListView.builder(
+        itemCount: _profiles.length,
+        itemBuilder: (context, index) {
+          final profile = _profiles[index];
+          return ListTile(
+            title: Text(profile.name),
+            subtitle: Text(profile.email),
+            trailing: IconButton(
+              icon: Icon(Icons.delete),
+              onPressed: () => userManager.delete(profile.id),
+            ),
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _addProfile,
+        child: Icon(Icons.add),
+      ),
+    );
+  }
+  
+  Future<void> _addProfile() async {
+    final profile = UserProfile(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: 'New User ${_profiles.length + 1}',
+      email: 'user${_profiles.length + 1}@example.com',
+    );
+    
+    // This will automatically trigger onCreate() callback
+    await userManager.put(profile.id, profile);
+  }
+  
+  @override
+  void dispose() {
+    _listeners?.dispose(); // Clean up listeners
+    super.dispose();
+  }
+}
+```
+
+### Socket.io Style API Reference
+
+| Method | When Called | Data Provided | Use Case |
+|--------|-------------|---------------|----------|
+| `onInit(callback)` | Manager ready | **All existing data** | Initialize UI with all data |
+| `onCreate(callback)` | New item added | **Only new item** | Add item to UI |
+| `onUpdate(callback)` | Item modified | **Only updated item** | Update item in UI |
+| `onDelete(callback)` | Item removed | **Only key** | Remove item from UI |
+| `onChange(callback)` | Any data change | **Key + data + action** | Handle all changes in one place |
+| `onSyncStart()` | Sync begins | - | Show loading |
+| `onSyncComplete()` | Sync ends | - | Hide loading |
+| `onError(callback)` | Error occurs | **Error object** | Show error message |
+
+**Key Benefits of Socket.io Style:**
+- 🚀 **Less Code**: No need to manually reload all data
+- ⚡ **Better Performance**: Only changed data is provided
+- 🎯 **More Intuitive**: Familiar API for web developers
+- 🔄 **Auto UI Updates**: UI automatically reflects changes
+
+## 🔧 Advanced Configuration
+
+```dart
+final config = SyncConfig(
+  // Sync frequency
+  syncInterval: Duration(minutes: 5),
+  
+  // Batch processing
+  batchSize: 50,
+  maxRetries: 3,
+  retryDelay: Duration(seconds: 2),
+  
+  // Network settings
+  requestTimeout: Duration(seconds: 30),
+  connectTimeout: Duration(seconds: 10),
+  
+  // Encryption (AES-256)
+  encryptionKey: 'your-32-character-encryption-key',
+  
+  // Conflict resolution strategy
+  conflictResolution: ConflictResolution.lastWriteWins,
 ```
 
 ## ⚙️ Configuration Options
