@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9]
+
+### Fixed
+- 🔧 **Duplicate Event Emissions**: Fixed critical issue where storage events were being emitted twice
+- ⚡ **Event Handling Optimization**: Removed duplicate event emissions from storage service manual triggers
+- 🎯 **Watcher-Only Events**: Streamlined event system to only emit events through Hive watcher
+- 📊 **Create vs Update Detection**: Improved event type detection to properly distinguish between create and update operations
+- 🔄 **Storage Service Refactor**: Cleaned up storage service event emission logic for better performance
+
+### Enhanced
+- 🚀 **Single Event Source**: All storage events now flow through a single, consistent watcher mechanism
+- 📈 **Better Performance**: Eliminated redundant event processing and improved overall system responsiveness
+- 🛡️ **Reliable Event Tracking**: Event listeners now receive exactly one event per operation
+
 ## [1.0.8]
 
 ### Fixed

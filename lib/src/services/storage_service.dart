@@ -119,13 +119,24 @@ class StorageService<T> {
   void _setupWatcher() {
     if (_box == null) return;
 
+    // Keep track of existing keys to differentiate create vs update
+    Set<String> existingKeys = Set<String>.from(_box!.keys);
+
     _watchSubscription = _box!.watch<String>().listen(
       (event) {
         final syncData = event.value;
         if (syncData != null) {
-          // Determine event type based on data state
-          final eventType =
-              syncData.deleted ? SynqEventType.delete : SynqEventType.update;
+          SynqEventType eventType;
+
+          if (syncData.deleted) {
+            eventType = SynqEventType.delete;
+            existingKeys.remove(event.key);
+          } else if (existingKeys.contains(event.key)) {
+            eventType = SynqEventType.update;
+          } else {
+            eventType = SynqEventType.create;
+            existingKeys.add(event.key);
+          }
 
           _eventController.add(
             SynqEvent<T>(
@@ -136,7 +147,7 @@ class StorageService<T> {
             ),
           );
         } else {
-          // Data was deleted
+          existingKeys.remove(event.key);
           _eventController.add(SynqEvent<T>.delete(key: event.key));
         }
       },
@@ -188,13 +199,6 @@ class StorageService<T> {
       await _box!.write(() {
         _box!.put(key, syncData);
       });
-
-      _eventController.add(
-        SynqEvent<T>.create(
-          key: key,
-          data: syncData,
-        ),
-      );
     } catch (error) {
       _eventController.add(
         SynqEvent<T>.syncError(
@@ -251,13 +255,6 @@ class StorageService<T> {
       await _box!.write(() {
         _box!.put(key, updatedData);
       });
-
-      _eventController.add(
-        SynqEvent<T>.update(
-          key: key,
-          data: updatedData,
-        ),
-      );
     } catch (error) {
       _eventController.add(
         SynqEvent<T>.syncError(
@@ -287,13 +284,6 @@ class StorageService<T> {
         _box!.put(key, deletedData);
       });
 
-      _eventController.add(
-        SynqEvent<T>.delete(
-          key: key,
-          data: deletedData,
-        ),
-      );
-
       return true;
     } catch (error) {
       _eventController.add(
@@ -314,10 +304,6 @@ class StorageService<T> {
       final result = _box!.write(() {
         return _box!.delete(key);
       });
-
-      if (result) {
-        _eventController.add(SynqEvent<T>.delete(key: key));
-      }
 
       return result;
     } catch (error) {
@@ -436,16 +422,9 @@ class StorageService<T> {
     if (!isReady) throw StateError('Storage service not ready');
 
     try {
-      final keys = List<String>.from(_box!.keys);
-
       await _box!.write(() {
         _box!.clear();
       });
-
-      // Emit delete events for all keys
-      for (final key in keys) {
-        _eventController.add(SynqEvent<T>.delete(key: key));
-      }
     } catch (error) {
       _eventController.add(
         SynqEvent<T>.syncError(
