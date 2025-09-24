@@ -77,19 +77,19 @@ class _NotesScreenState extends State<NotesScreen> {
       // Socket.io style event listening - Method 1: Builder Pattern
       await _synqManager!.onInit((data) {
         // Initial data loaded
-        print('📥 Initial data loaded: ${data.length} items');
+        debugPrint('📥 Initial data loaded: ${data.length} items');
         _refreshNotesFromData(data);
       }).onCreate((key, data) {
         // New data created
-        print('✨ Data created: $key');
+        debugPrint('✨ Data created: $key');
         _loadNotes();
       }).onUpdate((key, data) {
         // Data updated
-        print('📝 Data updated: $key');
+        debugPrint('📝 Data updated: $key');
         _loadNotes();
       }).onDelete((key) {
         // Data deleted
-        print('🗑️ Data deleted: $key');
+        debugPrint('🗑️ Data deleted: $key');
         _loadNotes();
       }).onSyncStart(() {
         setState(() {
