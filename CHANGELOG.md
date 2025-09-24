@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2025-09-24
+
+### Added
+- 🚀 **Socket.io Style Event Listeners**: Added Socket.io-like event handling with intuitive API
+- ✨ **Builder Pattern Support**: Quick setup with fluent `onInit().onCreate().onUpdate().start()` pattern
+- 🎯 **Granular Event Handling**: Separate callbacks for `onInit`, `onCreate`, `onUpdate`, `onDelete` events
+- 📡 **Real-time Data Streaming**: `onInit` provides all data, other events provide only changed data
+- 🔄 **Sync State Management**: Built-in `onSyncStart` and `onSyncComplete` event handlers
+- 🛡️ **Error Handling**: Dedicated `onError` callback for better error management
+- 🌐 **Connection State**: `onConnectionChange` for network connectivity monitoring
+- 📋 **Comprehensive Documentation**: Added detailed usage guide for Socket.io style API
+
+### Enhanced
+- 💡 **Developer Experience**: More intuitive API similar to Socket.io for web developers
+- ⚡ **Performance**: Optimized event handling with direct data access instead of full reloads
+- 🔧 **Flexibility**: Support for both traditional stream-based and Socket.io style event handling
+
+### Examples
+- 📚 **Updated Example App**: Demonstrates Socket.io style usage with real-time note management
+- 📖 **Usage Guide**: Created comprehensive guide for Socket.io style implementation
+
 ## [1.0.5]
 
 ### Added

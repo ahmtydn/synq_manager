@@ -74,10 +74,50 @@ class _NotesScreenState extends State<NotesScreen> {
         cloudFetchFunction: _mockCloudFetch,
       );
 
-      // Listen to events
-      _eventSubscription = _synqManager!.events.listen(_handleSynqEvent);
+      // Socket.io style event listening - Method 1: Builder Pattern
+      await _synqManager!.onInit((data) {
+        // Initial data loaded
+        print('📥 Initial data loaded: ${data.length} items');
+        _refreshNotesFromData(data);
+      }).onCreate((key, data) {
+        // New data created
+        print('✨ Data created: $key');
+        _loadNotes();
+      }).onUpdate((key, data) {
+        // Data updated
+        print('📝 Data updated: $key');
+        _loadNotes();
+      }).onDelete((key) {
+        // Data deleted
+        print('🗑️ Data deleted: $key');
+        _loadNotes();
+      }).onSyncStart(() {
+        setState(() {
+          _isSyncing = true;
+          _status = 'Synchronization started...';
+        });
+      }).onSyncComplete(() {
+        setState(() {
+          _isSyncing = false;
+          _status = 'Synchronization completed';
+        });
+      }).onError((error) {
+        setState(() {
+          _isSyncing = false;
+          _status = 'Error: $error';
+        });
+      }).start();
 
-      await _loadNotes();
+      // Alternative Socket.io style - Method 2: Fluent Interface
+      // final listeners = _synqManager!.on()
+      //   ..onInit((data) => _refreshNotesFromData(data))
+      //   ..onChange((key, data, action) {
+      //     print('📊 Data changed: $key -> $action');
+      //     _loadNotes();
+      //   })
+      //   ..onSyncStart(() => setState(() => _isSyncing = true))
+      //   ..onSyncComplete(() => setState(() => _isSyncing = false))
+      //   ..onError((error) => print('❌ Error: $error'));
 
       setState(() {
         _isLoading = false;
@@ -91,39 +131,13 @@ class _NotesScreenState extends State<NotesScreen> {
     }
   }
 
-  void _handleSynqEvent(SynqEvent<Map<String, dynamic>> event) {
-    switch (event.type) {
-      case SynqEventType.create:
-      case SynqEventType.update:
-      case SynqEventType.delete:
-        _loadNotes();
-        break;
-      case SynqEventType.syncStart:
-        setState(() {
-          _isSyncing = true;
-          _status = 'Synchronization started...';
-        });
-        break;
-      case SynqEventType.syncComplete:
-        setState(() {
-          _isSyncing = false;
-          _status = 'Synchronization completed';
-        });
-        break;
-      case SynqEventType.syncError:
-        setState(() {
-          _isSyncing = false;
-          _status = 'Synchronization error: ${event.error}';
-        });
-        break;
-      case SynqEventType.conflict:
-        setState(() {
-          _status = 'Conflict resolved: ${event.key}';
-        });
-        break;
-      default:
-        break;
-    }
+  void _refreshNotesFromData(Map<String, Map<String, dynamic>> data) {
+    final notes =
+        data.entries.map((entry) => Note.fromJson(entry.value)).toList();
+    notes.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    setState(() {
+      _notes = notes;
+    });
   }
 
   Future<void> _loadNotes() async {
@@ -131,14 +145,7 @@ class _NotesScreenState extends State<NotesScreen> {
 
     try {
       final notesData = await _synqManager!.getAll();
-      final notes =
-          notesData.entries.map((entry) => Note.fromJson(entry.value)).toList();
-
-      notes.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-      setState(() {
-        _notes = notes;
-      });
+      _refreshNotesFromData(notesData);
     } catch (e) {
       setState(() {
         _status = 'Note loading error: $e';
