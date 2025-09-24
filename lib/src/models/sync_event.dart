@@ -144,6 +144,88 @@ class SynqEvent<T> {
     );
   }
 
+  /// Creates a cloud sync start event
+  factory SynqEvent.cloudSyncStart({
+    required String key,
+    Map<String, dynamic> metadata = const {},
+  }) {
+    return SynqEvent<T>(
+      type: SynqEventType.cloudSyncStart,
+      key: key,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      metadata: metadata,
+    );
+  }
+
+  /// Creates a cloud sync success event
+  factory SynqEvent.cloudSyncSuccess({
+    required String key,
+    Map<String, dynamic> metadata = const {},
+  }) {
+    return SynqEvent<T>(
+      type: SynqEventType.cloudSyncSuccess,
+      key: key,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      metadata: metadata,
+    );
+  }
+
+  /// Creates a cloud sync error event
+  factory SynqEvent.cloudSyncError({
+    required String key,
+    required Object error,
+    Map<String, dynamic> metadata = const {},
+  }) {
+    return SynqEvent<T>(
+      type: SynqEventType.cloudSyncError,
+      key: key,
+      error: error,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      metadata: metadata,
+    );
+  }
+
+  /// Creates a cloud fetch start event
+  factory SynqEvent.cloudFetchStart({
+    required String key,
+    Map<String, dynamic> metadata = const {},
+  }) {
+    return SynqEvent<T>(
+      type: SynqEventType.cloudFetchStart,
+      key: key,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      metadata: metadata,
+    );
+  }
+
+  /// Creates a cloud fetch success event
+  factory SynqEvent.cloudFetchSuccess({
+    required String key,
+    Map<String, dynamic> metadata = const {},
+  }) {
+    return SynqEvent<T>(
+      type: SynqEventType.cloudFetchSuccess,
+      key: key,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      metadata: metadata,
+    );
+  }
+
+  /// Creates a cloud fetch error event
+  factory SynqEvent.cloudFetchError({
+    required String key,
+    required Object error,
+    Map<String, dynamic> metadata = const {},
+  }) {
+    return SynqEvent<T>(
+      type: SynqEventType.cloudFetchError,
+      key: key,
+      error: error,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      metadata: metadata,
+    );
+  }
+
   /// Creates instance from JSON
   factory SynqEvent.fromJson(
     Map<String, dynamic> json, {

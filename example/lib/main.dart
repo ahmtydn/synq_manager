@@ -101,6 +101,36 @@ class _NotesScreenState extends State<NotesScreen> {
           _isSyncing = false;
           _status = 'Synchronization completed';
         });
+      }).onCloudSyncStart(() {
+        debugPrint('🚀 Cloud sync started');
+        setState(() {
+          _status = 'Pushing to cloud...';
+        });
+      }).onCloudSyncSuccess((metadata) {
+        debugPrint('✅ Cloud sync success: $metadata');
+        setState(() {
+          _status = 'Cloud sync completed';
+        });
+      }).onCloudSyncError((error, metadata) {
+        debugPrint('❌ Cloud sync error: $error, metadata: $metadata');
+        setState(() {
+          _status = 'Cloud sync failed: $error';
+        });
+      }).onCloudFetchStart(() {
+        debugPrint('📡 Cloud fetch started');
+        setState(() {
+          _status = 'Fetching from cloud...';
+        });
+      }).onCloudFetchSuccess((metadata) {
+        debugPrint('📥 Cloud fetch success: $metadata');
+        setState(() {
+          _status = 'Cloud fetch completed';
+        });
+      }).onCloudFetchError((error, metadata) {
+        debugPrint('❌ Cloud fetch error: $error, metadata: $metadata');
+        setState(() {
+          _status = 'Cloud fetch failed: $error';
+        });
       }).onError((error) {
         setState(() {
           _isSyncing = false;

@@ -18,6 +18,24 @@ enum SynqEventType {
   /// Synchronization failed
   syncError,
 
+  /// Cloud sync operation started
+  cloudSyncStart,
+
+  /// Cloud sync operation completed successfully
+  cloudSyncSuccess,
+
+  /// Cloud sync operation failed
+  cloudSyncError,
+
+  /// Cloud fetch operation started
+  cloudFetchStart,
+
+  /// Cloud fetch operation completed successfully
+  cloudFetchSuccess,
+
+  /// Cloud fetch operation failed
+  cloudFetchError,
+
   /// Connection established
   connected,
 

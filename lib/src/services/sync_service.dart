@@ -351,25 +351,51 @@ class SyncService<T> {
 
   /// Fetches remote updates
   Future<void> _fetchRemoteUpdates() async {
+    _eventController.add(SynqEvent<T>.cloudFetchStart(key: '__cloud_fetch__'));
+
     try {
       final remoteData = await cloudFetchFunction(
         _lastSyncTimestamp,
         config.customHeaders,
       );
 
+      _eventController.add(SynqEvent<T>.cloudFetchSuccess(
+        key: '__cloud_fetch__',
+        metadata: {'remoteDataCount': remoteData.length},
+      ));
+
       await _processRemoteData(remoteData);
     } catch (error) {
+      _eventController.add(SynqEvent<T>.cloudFetchError(
+        key: '__cloud_fetch__',
+        error: error,
+        metadata: {'operation': 'cloudFetchFunction'},
+      ));
       rethrow;
     }
   }
 
   /// Performs full synchronization with local changes
   Future<void> _performFullSync(Map<String, SyncData<T>> localChanges) async {
+    _eventController.add(SynqEvent<T>.cloudSyncStart(
+      key: '__cloud_sync__',
+      metadata: {'localChangesCount': localChanges.length},
+    ));
+
     try {
       final result =
           await cloudSyncFunction(localChanges, config.customHeaders);
 
       if (result.success) {
+        _eventController.add(SynqEvent<T>.cloudSyncSuccess(
+          key: '__cloud_sync__',
+          metadata: {
+            'remoteDataCount': result.remoteData.length,
+            'conflictsCount': result.conflicts.length,
+            'syncMetadata': result.metadata,
+          },
+        ));
+
         // Process remote data
         await _processRemoteData(result.remoteData);
 
@@ -379,9 +405,26 @@ class SyncService<T> {
         // Clear pending changes
         _pendingChanges.clear();
       } else {
-        throw result.error ?? Exception('Sync failed without specific error');
+        final error =
+            result.error ?? Exception('Sync failed without specific error');
+        _eventController.add(SynqEvent<T>.cloudSyncError(
+          key: '__cloud_sync__',
+          error: error,
+          metadata: {
+            'operation': 'cloudSyncFunction',
+            'syncMetadata': result.metadata,
+          },
+        ));
+        throw error;
       }
     } catch (error) {
+      if (error.runtimeType.toString() != 'SynqEvent<T>') {
+        _eventController.add(SynqEvent<T>.cloudSyncError(
+          key: '__cloud_sync__',
+          error: error,
+          metadata: {'operation': 'cloudSyncFunction'},
+        ));
+      }
       rethrow;
     }
   }

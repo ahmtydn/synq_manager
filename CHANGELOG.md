@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.7] - 2025-09-24
+
+### Added
+- 🚀 **Cloud Sync Event Tracking**: Added detailed event emissions for cloud sync operations
+- ☁️ **CloudSyncFunction Events**: `cloudSyncStart`, `cloudSyncSuccess`, `cloudSyncError` events
+- 📡 **CloudFetchFunction Events**: `cloudFetchStart`, `cloudFetchSuccess`, `cloudFetchError` events
+- 📊 **Enhanced Metadata**: Cloud sync/fetch events include detailed metadata (counts, error info, etc.)
+- 🎯 **Socket.io Style Cloud Events**: New listener methods `onCloudSyncStart()`, `onCloudSyncSuccess()`, etc.
+- 🛡️ **Detailed Error Information**: Cloud sync errors now include operation context and metadata
+- 📋 **Example Integration**: Updated example app to demonstrate cloud sync event handling
+
+### Enhanced
+- ⚡ **Real-time Cloud Operation Tracking**: Users can now monitor cloud sync progress in real-time
+- 🎨 **Better User Experience**: Apps can show specific status for cloud operations ("Pushing to cloud...", etc.)
+- 🔍 **Debugging Support**: Enhanced error reporting for cloud sync troubleshooting
+
 ## [1.0.6] - 2025-09-24
 
 ### Added

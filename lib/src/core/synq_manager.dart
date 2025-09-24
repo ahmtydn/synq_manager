@@ -596,6 +596,70 @@ class SynqListeners<T> {
     return this;
   }
 
+  /// Listen for cloud sync start events
+  SynqListeners<T> onCloudSyncStart(Function() callback) {
+    _subscriptions.add(
+      _manager.onEvent(SynqEventType.cloudSyncStart).listen((_) => callback()),
+    );
+    return this;
+  }
+
+  /// Listen for cloud sync success events
+  SynqListeners<T> onCloudSyncSuccess(
+      Function(Map<String, dynamic> metadata) callback) {
+    _subscriptions.add(
+      _manager
+          .onEvent(SynqEventType.cloudSyncSuccess)
+          .listen((event) => callback(event.metadata)),
+    );
+    return this;
+  }
+
+  /// Listen for cloud sync error events
+  SynqListeners<T> onCloudSyncError(
+      Function(Object error, Map<String, dynamic> metadata) callback) {
+    _subscriptions.add(
+      _manager.onEvent(SynqEventType.cloudSyncError).listen((event) => callback(
+            event.error ?? 'Unknown cloud sync error',
+            event.metadata,
+          )),
+    );
+    return this;
+  }
+
+  /// Listen for cloud fetch start events
+  SynqListeners<T> onCloudFetchStart(Function() callback) {
+    _subscriptions.add(
+      _manager.onEvent(SynqEventType.cloudFetchStart).listen((_) => callback()),
+    );
+    return this;
+  }
+
+  /// Listen for cloud fetch success events
+  SynqListeners<T> onCloudFetchSuccess(
+      Function(Map<String, dynamic> metadata) callback) {
+    _subscriptions.add(
+      _manager
+          .onEvent(SynqEventType.cloudFetchSuccess)
+          .listen((event) => callback(event.metadata)),
+    );
+    return this;
+  }
+
+  /// Listen for cloud fetch error events
+  SynqListeners<T> onCloudFetchError(
+      Function(Object error, Map<String, dynamic> metadata) callback) {
+    _subscriptions.add(
+      _manager
+          .onEvent(SynqEventType.cloudFetchError)
+          .listen((event) => callback(
+                event.error ?? 'Unknown cloud fetch error',
+                event.metadata,
+              )),
+    );
+    return this;
+  }
+
   /// Cancel all event listeners
   void dispose() {
     for (final subscription in _subscriptions) {
@@ -615,6 +679,12 @@ class SynqSocketBuilder<T> {
   Function(Object error)? _onError;
   Function()? _onSyncComplete;
   Function()? _onSyncStart;
+  Function()? _onCloudSyncStart;
+  Function(Map<String, dynamic> metadata)? _onCloudSyncSuccess;
+  Function(Object error, Map<String, dynamic> metadata)? _onCloudSyncError;
+  Function()? _onCloudFetchStart;
+  Function(Map<String, dynamic> metadata)? _onCloudFetchSuccess;
+  Function(Object error, Map<String, dynamic> metadata)? _onCloudFetchError;
 
   SynqSocketBuilder(this._manager, this._onInit);
 
@@ -654,6 +724,46 @@ class SynqSocketBuilder<T> {
     return this;
   }
 
+  /// Set cloud sync start event handler
+  SynqSocketBuilder<T> onCloudSyncStart(Function() callback) {
+    _onCloudSyncStart = callback;
+    return this;
+  }
+
+  /// Set cloud sync success event handler
+  SynqSocketBuilder<T> onCloudSyncSuccess(
+      Function(Map<String, dynamic> metadata) callback) {
+    _onCloudSyncSuccess = callback;
+    return this;
+  }
+
+  /// Set cloud sync error event handler
+  SynqSocketBuilder<T> onCloudSyncError(
+      Function(Object error, Map<String, dynamic> metadata) callback) {
+    _onCloudSyncError = callback;
+    return this;
+  }
+
+  /// Set cloud fetch start event handler
+  SynqSocketBuilder<T> onCloudFetchStart(Function() callback) {
+    _onCloudFetchStart = callback;
+    return this;
+  }
+
+  /// Set cloud fetch success event handler
+  SynqSocketBuilder<T> onCloudFetchSuccess(
+      Function(Map<String, dynamic> metadata) callback) {
+    _onCloudFetchSuccess = callback;
+    return this;
+  }
+
+  /// Set cloud fetch error event handler
+  SynqSocketBuilder<T> onCloudFetchError(
+      Function(Object error, Map<String, dynamic> metadata) callback) {
+    _onCloudFetchError = callback;
+    return this;
+  }
+
   /// Start listening and trigger initial data load
   Future<SynqListeners<T>> start() async {
     final listeners = _manager.on();
@@ -683,6 +793,30 @@ class SynqSocketBuilder<T> {
 
     if (_onSyncStart != null) {
       listeners.onSyncStart(_onSyncStart!);
+    }
+
+    if (_onCloudSyncStart != null) {
+      listeners.onCloudSyncStart(_onCloudSyncStart!);
+    }
+
+    if (_onCloudSyncSuccess != null) {
+      listeners.onCloudSyncSuccess(_onCloudSyncSuccess!);
+    }
+
+    if (_onCloudSyncError != null) {
+      listeners.onCloudSyncError(_onCloudSyncError!);
+    }
+
+    if (_onCloudFetchStart != null) {
+      listeners.onCloudFetchStart(_onCloudFetchStart!);
+    }
+
+    if (_onCloudFetchSuccess != null) {
+      listeners.onCloudFetchSuccess(_onCloudFetchSuccess!);
+    }
+
+    if (_onCloudFetchError != null) {
+      listeners.onCloudFetchError(_onCloudFetchError!);
     }
 
     // Trigger initial data load if manager is ready
