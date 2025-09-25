@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.10]
+
+### Added
+- 🚀 **DocumentSerializable Support**: Added support for DocumentSerializable interface to SynqManager
+- 📄 **Enhanced Serialization**: Improved data serialization capabilities for better document handling
+- 🔧 **Storage Service Enhancement**: Major improvements to storage service functionality
+
+### Enhanced
+- ⚡ **SynqManager Core Updates**: Refactored core SynqManager implementation for better performance
+- 📊 **Storage Service Optimization**: Streamlined storage service operations (258 additions, 272 deletions)
+- 🛠️ **Sync Service Improvements**: Enhanced sync service logic for more reliable data synchronization
+- 📦 **Model Updates**: Simplified SyncData model implementation
+- 🎯 **Example Integration**: Updated example app to demonstrate new DocumentSerializable features
+
+### Technical Improvements
+- 🔄 **Code Refactoring**: Major refactoring across core services for better maintainability
+- 📋 **API Consistency**: Improved API consistency across storage and sync services
+- 🧹 **Code Cleanup**: Removed redundant code and improved overall code quality
+
 ## [1.0.9]
 
 ### Fixed
