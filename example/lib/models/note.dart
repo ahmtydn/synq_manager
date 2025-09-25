@@ -1,10 +1,11 @@
 import 'package:json_annotation/json_annotation.dart';
+import 'package:synq_manager/synq_manager.dart';
 
 part 'note.g.dart';
 
 /// A simple note model to demonstrate SynqManager functionality
 @JsonSerializable()
-class Note {
+class Note implements DocumentSerializable {
   const Note({
     required this.id,
     required this.title,
@@ -40,6 +41,7 @@ class Note {
   final bool isImportant;
 
   /// Converts this Note to JSON
+  @override
   Map<String, dynamic> toJson() => _$NoteToJson(this);
 
   /// Creates a copy of this note with updated values

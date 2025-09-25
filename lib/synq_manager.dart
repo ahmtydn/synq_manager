@@ -4,6 +4,9 @@
 /// background cloud synchronization, and conflict resolution capabilities.
 library synq_manager;
 
+export 'package:hive_plus_secure/hive_plus_secure.dart'
+    show DocumentSerializable;
+
 export 'src/core/synq_manager.dart';
 export 'src/events/event_types.dart';
 export 'src/models/conflict_resolution.dart';

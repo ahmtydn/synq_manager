@@ -36,13 +36,13 @@ class NotesScreen extends StatefulWidget {
 }
 
 class _NotesScreenState extends State<NotesScreen> {
-  SynqManager<Map<String, dynamic>>? _synqManager;
+  SynqManager<Note>? _synqManager;
   List<Note> _notes = [];
   bool _isLoading = true;
   bool _isSyncing = false;
   String _status = 'Initializing...';
   final Uuid _uuid = const Uuid();
-  StreamSubscription<SynqEvent<Map<String, dynamic>>>? _eventSubscription;
+  StreamSubscription<SynqEvent<Note>>? _eventSubscription;
 
   @override
   void initState() {
@@ -62,7 +62,7 @@ class _NotesScreenState extends State<NotesScreen> {
         _status = 'Starting SynqManager...';
       });
 
-      _synqManager = await SynqManager.getInstance<Map<String, dynamic>>(
+      _synqManager = await SynqManager.getInstance<Note>(
         instanceName: 'notes_manager',
         config: const SyncConfig(
           syncInterval: Duration(seconds: 30),
@@ -72,6 +72,8 @@ class _NotesScreenState extends State<NotesScreen> {
         ),
         cloudSyncFunction: _mockCloudSync,
         cloudFetchFunction: _mockCloudFetch,
+        fromJson: Note.fromJson,
+        toJson: (note) => note.toJson(),
       );
 
       // Socket.io style event listening - Method 1: Builder Pattern
@@ -161,9 +163,8 @@ class _NotesScreenState extends State<NotesScreen> {
     }
   }
 
-  void _refreshNotesFromData(Map<String, Map<String, dynamic>> data) {
-    final notes =
-        data.entries.map((entry) => Note.fromJson(entry.value)).toList();
+  void _refreshNotesFromData(Map<String, Note> data) {
+    final notes = data.values.toList();
     notes.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     setState(() {
       _notes = notes;
@@ -184,8 +185,8 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   // Mock cloud sync function - simulates sending data to a cloud service
-  Future<SyncResult<Map<String, dynamic>>> _mockCloudSync(
-    Map<String, SyncData<Map<String, dynamic>>> localChanges,
+  Future<SyncResult<Note>> _mockCloudSync(
+    Map<String, SyncData<Note>> localChanges,
     Map<String, String> headers,
   ) async {
     // Simulate network delay
@@ -200,7 +201,7 @@ class _NotesScreenState extends State<NotesScreen> {
     }
 
     // Return successful sync result
-    return const SyncResult<Map<String, dynamic>>(
+    return const SyncResult<Note>(
       success: true,
       remoteData: {},
       conflicts: [],
@@ -208,7 +209,7 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   // Mock cloud fetch function - simulates fetching data from a cloud service
-  Future<Map<String, SyncData<Map<String, dynamic>>>> _mockCloudFetch(
+  Future<Map<String, SyncData<Note>>> _mockCloudFetch(
     int lastSyncTimestamp,
     Map<String, String> headers,
   ) async {
@@ -234,7 +235,7 @@ class _NotesScreenState extends State<NotesScreen> {
     );
 
     try {
-      await _synqManager!.put(note.id, note.toJson());
+      await _synqManager!.put(note.id, note);
       setState(() {
         _status = 'Note added';
       });
@@ -254,7 +255,7 @@ class _NotesScreenState extends State<NotesScreen> {
     if (result != null && _synqManager != null) {
       try {
         final updatedNote = result.copyWith(updatedAt: DateTime.now());
-        await _synqManager!.update(updatedNote.id, updatedNote.toJson());
+        await _synqManager!.update(updatedNote.id, updatedNote);
         setState(() {
           _status = 'Note updated';
         });

@@ -11,7 +11,6 @@ typedef ToJsonFunction<T> = Map<String, dynamic> Function(T object);
 class SyncData<T> {
   /// Creates a new sync data instance
   const SyncData({
-    required this.key,
     required this.value,
     required this.timestamp,
     this.version = 1,
@@ -36,7 +35,6 @@ class SyncData<T> {
     }
 
     return SyncData<T>(
-      key: json['key'] as String,
       value: value,
       timestamp: json['timestamp'] as int,
       version: json['version'] as int? ?? 1,
@@ -44,9 +42,6 @@ class SyncData<T> {
       deleted: json['deleted'] as bool? ?? false,
     );
   }
-
-  /// Unique identifier for this data
-  final String key;
 
   /// The actual data payload
   final T? value;
@@ -73,7 +68,6 @@ class SyncData<T> {
     bool? deleted,
   }) {
     return SyncData<T>(
-      key: key ?? this.key,
       value: value ?? this.value,
       timestamp: timestamp ?? this.timestamp,
       version: version ?? this.version,
@@ -108,7 +102,6 @@ class SyncData<T> {
     }
 
     return {
-      'key': key,
       'value': jsonValue,
       'timestamp': timestamp,
       'version': version,
@@ -122,7 +115,6 @@ class SyncData<T> {
       identical(this, other) ||
       other is SyncData<T> &&
           runtimeType == other.runtimeType &&
-          key == other.key &&
           value == other.value &&
           timestamp == other.timestamp &&
           version == other.version &&
@@ -130,15 +122,11 @@ class SyncData<T> {
 
   @override
   int get hashCode =>
-      key.hashCode ^
-      value.hashCode ^
-      timestamp.hashCode ^
-      version.hashCode ^
-      deleted.hashCode;
+      value.hashCode ^ timestamp.hashCode ^ version.hashCode ^ deleted.hashCode;
 
   @override
   String toString() {
-    return 'SyncData<$T>(key: $key, value: $value, timestamp: $timestamp, '
+    return 'SyncData<$T>(value: $value, timestamp: $timestamp, '
         'version: $version, deleted: $deleted)';
   }
 }

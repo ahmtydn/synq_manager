@@ -4,12 +4,10 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:hive_plus_secure/hive_plus_secure.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:synq_manager/src/events/event_types.dart';
-import 'package:synq_manager/src/models/sync_data.dart';
-import 'package:synq_manager/src/models/sync_event.dart';
+import 'package:synq_manager/synq_manager.dart';
 
 /// Service for secure local storage operations
-class StorageService<T> {
+class StorageService<T extends DocumentSerializable> {
   StorageService._({
     required this.boxName,
     required this.encryptionKey,
@@ -41,10 +39,10 @@ class StorageService<T> {
       StreamController<SynqEvent<T>>.broadcast();
 
   /// Watch subscription for box changes
-  StreamSubscription<WatchEvent<String, SyncData<T>>>? _watchSubscription;
+  StreamSubscription<ChangeDetail>? _watchSubscription;
 
   /// Creates a new storage service instance
-  static Future<StorageService<T>> create<T>({
+  static Future<StorageService<T>> create<T extends DocumentSerializable>({
     required String boxName,
     String? encryptionKey,
     int maxSizeMiB = 5,
@@ -119,37 +117,24 @@ class StorageService<T> {
   void _setupWatcher() {
     if (_box == null) return;
 
-    // Keep track of existing keys to differentiate create vs update
-    Set<String> existingKeys = Set<String>.from(_box!.keys);
-
-    _watchSubscription = _box!.watch<String>().listen(
+    _watchSubscription = _box!.watchDetailed<T>().listen(
       (event) {
-        final syncData = event.value;
-        if (syncData != null) {
-          SynqEventType eventType;
-
-          if (syncData.deleted) {
-            eventType = SynqEventType.delete;
-            existingKeys.remove(event.key);
-          } else if (existingKeys.contains(event.key)) {
-            eventType = SynqEventType.update;
-          } else {
-            eventType = SynqEventType.create;
-            existingKeys.add(event.key);
-          }
-
-          _eventController.add(
-            SynqEvent<T>(
-              type: eventType,
+        final SynqEvent<T> result = switch (event.changeType) {
+          ChangeType.insert => SynqEvent<T>.create(
               key: event.key,
-              data: syncData,
-              timestamp: DateTime.now().millisecondsSinceEpoch,
+              data: SyncData(
+                  value: event.fullDocument,
+                  timestamp: DateTime.now().millisecondsSinceEpoch),
             ),
-          );
-        } else {
-          existingKeys.remove(event.key);
-          _eventController.add(SynqEvent<T>.delete(key: event.key));
-        }
+          ChangeType.update => SynqEvent<T>.update(
+              key: event.key,
+              data: SyncData(
+                  value: event.fullDocument,
+                  timestamp: DateTime.now().millisecondsSinceEpoch),
+            ),
+          ChangeType.delete => SynqEvent<T>.delete(key: event.key),
+        };
+        _eventController.add(result);
       },
       onError: (Object error) {
         _eventController.add(
@@ -180,6 +165,31 @@ class StorageService<T> {
   /// All keys in storage
   List<String> get keys => _box?.keys ?? [];
 
+  Future<void> add(
+    T value, {
+    Map<String, dynamic>? metadata,
+  }) async {
+    if (!isReady) throw StateError('Storage service not ready');
+
+    try {
+      final syncData = SyncData<T>(
+        value: value,
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+        metadata: metadata ?? {},
+      );
+
+      _box!.add(syncData);
+    } catch (error) {
+      _eventController.add(
+        SynqEvent<T>.syncError(
+          key: '__add__',
+          error: error,
+        ),
+      );
+      rethrow;
+    }
+  }
+
   /// Stores data with the given key
   Future<void> put(
     String key,
@@ -190,15 +200,12 @@ class StorageService<T> {
 
     try {
       final syncData = SyncData<T>(
-        key: key,
         value: value,
         timestamp: DateTime.now().millisecondsSinceEpoch,
         metadata: metadata ?? {},
       );
 
-      await _box!.write(() {
-        _box!.put(key, syncData);
-      });
+      _box!.put(key, syncData);
     } catch (error) {
       _eventController.add(
         SynqEvent<T>.syncError(
@@ -215,7 +222,7 @@ class StorageService<T> {
     if (!isReady) throw StateError('Storage service not ready');
 
     try {
-      return await _box!.read(() => _box!.get(key));
+      return _box!.get(key);
     } catch (error) {
       _eventController.add(
         SynqEvent<T>.syncError(
@@ -251,10 +258,7 @@ class StorageService<T> {
         newValue: value,
         newMetadata: metadata,
       );
-
-      await _box!.write(() {
-        _box!.put(key, updatedData);
-      });
+      _box!.put(key, updatedData);
     } catch (error) {
       _eventController.add(
         SynqEvent<T>.syncError(
@@ -274,38 +278,11 @@ class StorageService<T> {
       final existing = await get(key);
       if (existing == null) return false;
 
-      // Mark as deleted instead of removing completely for sync purposes
-      final deletedData = existing.copyWith(
-        deleted: true,
-        timestamp: DateTime.now().millisecondsSinceEpoch,
+      _box!.delete(
+        key,
       );
-
-      await _box!.write(() {
-        _box!.put(key, deletedData);
-      });
 
       return true;
-    } catch (error) {
-      _eventController.add(
-        SynqEvent<T>.syncError(
-          key: key,
-          error: error,
-        ),
-      );
-      rethrow;
-    }
-  }
-
-  /// Permanently removes data from storage
-  Future<bool> purge(String key) async {
-    if (!isReady) throw StateError('Storage service not ready');
-
-    try {
-      final result = _box!.write(() {
-        return _box!.delete(key);
-      });
-
-      return result;
     } catch (error) {
       _eventController.add(
         SynqEvent<T>.syncError(
@@ -322,16 +299,14 @@ class StorageService<T> {
     if (!isReady) throw StateError('Storage service not ready');
 
     try {
-      return await _box!.read(() {
-        final result = <String, SyncData<T>>{};
-        for (final key in _box!.keys) {
-          final data = _box!.get(key);
-          if (data != null) {
-            result[key] = data;
-          }
+      final result = <String, SyncData<T>>{};
+      for (final key in _box!.keys) {
+        final data = _box!.get(key);
+        if (data != null) {
+          result[key] = data;
         }
-        return result;
-      });
+      }
+      return result;
     } catch (error) {
       _eventController.add(
         SynqEvent<T>.syncError(
@@ -350,7 +325,7 @@ class StorageService<T> {
 
     for (final entry in allData.entries) {
       if (!entry.value.deleted && entry.value.value != null) {
-        result[entry.key] = entry.value.value as T;
+        result[entry.key] = entry.value.value!;
       }
     }
 
@@ -379,20 +354,17 @@ class StorageService<T> {
     if (!isReady) throw StateError('Storage service not ready');
 
     try {
-      await _box!.write(() {
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
 
-        for (final entry in entries.entries) {
-          final syncData = SyncData<T>(
-            key: entry.key,
-            value: entry.value,
-            timestamp: timestamp,
-            metadata: metadata ?? {},
-          );
+      for (final entry in entries.entries) {
+        final syncData = SyncData<T>(
+          value: entry.value,
+          timestamp: timestamp,
+          metadata: metadata ?? {},
+        );
 
-          _box!.put(entry.key, syncData);
-        }
-      });
+        _box!.put(entry.key, syncData);
+      }
 
       // Emit events for all entries
       for (final key in entries.keys) {
@@ -422,9 +394,7 @@ class StorageService<T> {
     if (!isReady) throw StateError('Storage service not ready');
 
     try {
-      await _box!.write(() {
-        _box!.clear();
-      });
+      _box!.clear();
     } catch (error) {
       _eventController.add(
         SynqEvent<T>.syncError(
@@ -455,21 +425,17 @@ class StorageService<T> {
       // Remove entries marked as deleted
       final keysToRemove = <String>[];
 
-      await _box!.read(() {
-        for (final key in _box!.keys) {
-          final data = _box!.get(key);
-          if (data != null && data.deleted) {
-            keysToRemove.add(key);
-          }
+      for (final key in _box!.keys) {
+        final data = _box!.get(key);
+        if (data != null && data.deleted) {
+          keysToRemove.add(key);
         }
-      });
+      }
 
       if (keysToRemove.isNotEmpty) {
-        await _box!.write(() {
-          for (final key in keysToRemove) {
-            _box!.delete(key);
-          }
-        });
+        for (final key in keysToRemove) {
+          _box!.delete(key);
+        }
       }
     } catch (error) {
       _eventController.add(
@@ -486,33 +452,31 @@ class StorageService<T> {
   Future<StorageStats> getStats() async {
     if (!isReady) throw StateError('Storage service not ready');
 
-    return await _box!.read(() {
-      var totalEntries = 0;
-      var activeEntries = 0;
-      var deletedEntries = 0;
-      var totalSize = 0;
+    var totalEntries = 0;
+    var activeEntries = 0;
+    var deletedEntries = 0;
+    var totalSize = 0;
 
-      for (final key in _box!.keys) {
-        final data = _box!.get(key);
-        if (data != null) {
-          totalEntries++;
-          totalSize += key.length + data.toString().length;
+    for (final key in _box!.keys) {
+      final data = _box!.get(key);
+      if (data != null) {
+        totalEntries++;
+        totalSize += key.length + data.toString().length;
 
-          if (data.deleted) {
-            deletedEntries++;
-          } else {
-            activeEntries++;
-          }
+        if (data.deleted) {
+          deletedEntries++;
+        } else {
+          activeEntries++;
         }
       }
+    }
 
-      return StorageStats(
-        totalEntries: totalEntries,
-        activeEntries: activeEntries,
-        deletedEntries: deletedEntries,
-        estimatedSizeBytes: totalSize,
-      );
-    });
+    return StorageStats(
+      totalEntries: totalEntries,
+      activeEntries: activeEntries,
+      deletedEntries: deletedEntries,
+      estimatedSizeBytes: totalSize,
+    );
   }
 }
 

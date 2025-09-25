@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:hive_plus_secure/hive_plus_secure.dart';
 import 'package:synq_manager/src/events/event_types.dart';
 import 'package:synq_manager/src/models/conflict_resolution.dart';
 import 'package:synq_manager/src/models/sync_config.dart';
@@ -49,7 +50,7 @@ class SyncResult<T> {
 }
 
 /// Service for handling cloud synchronization
-class SyncService<T> {
+class SyncService<T extends DocumentSerializable> {
   SyncService._({
     required this.storageService,
     required this.config,
@@ -95,7 +96,7 @@ class SyncService<T> {
   final Map<String, DataConflict<T>> _activeConflicts = {};
 
   /// Creates a new sync service instance
-  static Future<SyncService<T>> create<T>({
+  static Future<SyncService<T>> create<T extends DocumentSerializable>({
     required StorageService<T> storageService,
     required SyncConfig config,
     required CloudSyncFunction<T> cloudSyncFunction,
@@ -405,18 +406,22 @@ class SyncService<T> {
         config.customHeaders,
       );
 
-      _eventController.add(SynqEvent<T>.cloudFetchSuccess(
-        key: '__cloud_fetch__',
-        metadata: {'remoteDataCount': remoteData.length},
-      ));
+      _eventController.add(
+        SynqEvent<T>.cloudFetchSuccess(
+          key: '__cloud_fetch__',
+          metadata: {'remoteDataCount': remoteData.length},
+        ),
+      );
 
       return remoteData;
     } catch (error) {
-      _eventController.add(SynqEvent<T>.cloudFetchError(
-        key: '__cloud_fetch__',
-        error: error,
-        metadata: {'operation': 'cloudFetchFunction'},
-      ));
+      _eventController.add(
+        SynqEvent<T>.cloudFetchError(
+          key: '__cloud_fetch__',
+          error: error,
+          metadata: const {'operation': 'cloudFetchFunction'},
+        ),
+      );
       rethrow;
     }
   }
@@ -467,42 +472,50 @@ class SyncService<T> {
 
   /// Pushes local changes to remote
   Future<void> _pushLocalChanges(Map<String, SyncData<T>> localChanges) async {
-    _eventController.add(SynqEvent<T>.cloudSyncStart(
-      key: '__cloud_sync__',
-      metadata: {'localChangesCount': localChanges.length},
-    ));
+    _eventController.add(
+      SynqEvent<T>.cloudSyncStart(
+        key: '__cloud_sync__',
+        metadata: {'localChangesCount': localChanges.length},
+      ),
+    );
 
     try {
       final result =
           await cloudSyncFunction(localChanges, config.customHeaders);
 
       if (result.success) {
-        _eventController.add(SynqEvent<T>.cloudSyncSuccess(
-          key: '__cloud_sync__',
-          metadata: {
-            'remoteDataCount': result.remoteData.length,
-            'syncMetadata': result.metadata,
-          },
-        ));
+        _eventController.add(
+          SynqEvent<T>.cloudSyncSuccess(
+            key: '__cloud_sync__',
+            metadata: {
+              'remoteDataCount': result.remoteData.length,
+              'syncMetadata': result.metadata,
+            },
+          ),
+        );
       } else {
         final error =
             result.error ?? Exception('Sync failed without specific error');
-        _eventController.add(SynqEvent<T>.cloudSyncError(
-          key: '__cloud_sync__',
-          error: error,
-          metadata: {
-            'operation': 'cloudSyncFunction',
-            'syncMetadata': result.metadata,
-          },
-        ));
+        _eventController.add(
+          SynqEvent<T>.cloudSyncError(
+            key: '__cloud_sync__',
+            error: error,
+            metadata: {
+              'operation': 'cloudSyncFunction',
+              'syncMetadata': result.metadata,
+            },
+          ),
+        );
         throw error;
       }
     } catch (error) {
-      _eventController.add(SynqEvent<T>.cloudSyncError(
-        key: '__cloud_sync__',
-        error: error,
-        metadata: {'operation': 'cloudSyncFunction'},
-      ));
+      _eventController.add(
+        SynqEvent<T>.cloudSyncError(
+          key: '__cloud_sync__',
+          error: error,
+          metadata: const {'operation': 'cloudSyncFunction'},
+        ),
+      );
       rethrow;
     }
   }
@@ -543,7 +556,7 @@ class SyncService<T> {
         // New item from remote
         await storageService.put(
           key,
-          remoteItem.value as T,
+          remoteItem.value!,
           metadata: remoteItem.metadata,
         );
       } else if (localItem.version < remoteItem.version) {
@@ -553,7 +566,7 @@ class SyncService<T> {
         } else {
           await storageService.update(
             key,
-            remoteItem.value as T,
+            remoteItem.value!,
             metadata: remoteItem.metadata,
           );
         }
@@ -568,7 +581,7 @@ class SyncService<T> {
           } else {
             await storageService.update(
               key,
-              remoteItem.value as T,
+              remoteItem.value!,
               metadata: remoteItem.metadata,
             );
           }
@@ -588,7 +601,7 @@ class SyncService<T> {
             // Apply resolved data
             await storageService.put(
               conflict.key,
-              resolution.resolvedData!.value as T,
+              resolution.resolvedData!.value!,
               metadata: resolution.resolvedData!.metadata,
             );
 
@@ -658,7 +671,7 @@ class SyncService<T> {
         // Apply resolved data
         await storageService.put(
           key,
-          resolution.resolvedData!.value as T,
+          resolution.resolvedData!.value!,
           metadata: resolution.resolvedData!.metadata,
         );
 
