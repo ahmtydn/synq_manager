@@ -117,23 +117,36 @@ class StorageService<T extends DocumentSerializable> {
   void _setupWatcher() {
     if (_box == null) return;
 
-    _watchSubscription = _box!.watchDetailed<T>().listen(
+    _watchSubscription = _box!
+        .watchDetailed<T>(
+      documentParser: fromJson,
+    )
+        .listen(
       (event) {
-        final SynqEvent<T> result = switch (event.changeType) {
+        final result = switch (event.changeType) {
           ChangeType.insert => SynqEvent<T>.create(
               key: event.key,
               data: SyncData(
-                  value: event.fullDocument,
-                  timestamp: DateTime.now().millisecondsSinceEpoch),
+                value: event.fullDocument,
+                timestamp: DateTime.now().millisecondsSinceEpoch,
+              ),
             ),
           ChangeType.update => SynqEvent<T>.update(
               key: event.key,
               data: SyncData(
-                  value: event.fullDocument,
-                  timestamp: DateTime.now().millisecondsSinceEpoch),
+                value: event.fullDocument,
+                timestamp: DateTime.now().millisecondsSinceEpoch,
+              ),
             ),
-          ChangeType.delete => SynqEvent<T>.delete(key: event.key),
+          ChangeType.delete => SynqEvent<T>.delete(
+              key: event.key,
+              data: SyncData(
+                value: event.fullDocument,
+                timestamp: DateTime.now().millisecondsSinceEpoch,
+              ),
+            ),
         };
+        print('Storage event: $result');
         _eventController.add(result);
       },
       onError: (Object error) {
@@ -364,19 +377,6 @@ class StorageService<T extends DocumentSerializable> {
         );
 
         _box!.put(entry.key, syncData);
-      }
-
-      // Emit events for all entries
-      for (final key in entries.keys) {
-        final syncData = await get(key);
-        if (syncData != null) {
-          _eventController.add(
-            SynqEvent<T>.create(
-              key: key,
-              data: syncData,
-            ),
-          );
-        }
       }
     } catch (error) {
       _eventController.add(

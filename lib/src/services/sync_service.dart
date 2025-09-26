@@ -609,7 +609,7 @@ class SyncService<T extends DocumentSerializable> {
               SynqEvent<T>(
                 type: SynqEventType.conflictResolved,
                 key: conflict.key,
-                data: resolution.resolvedData,
+                data: resolution.resolvedData!,
               ),
             );
           } else {
@@ -682,7 +682,7 @@ class SyncService<T extends DocumentSerializable> {
           SynqEvent<T>(
             type: SynqEventType.conflictResolved,
             key: key,
-            data: resolution.resolvedData,
+            data: resolution.resolvedData!,
           ),
         );
       } else {

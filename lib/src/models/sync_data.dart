@@ -18,6 +18,13 @@ class SyncData<T> {
     this.deleted = false,
   });
 
+  const SyncData.empty()
+      : value = null,
+        timestamp = 0,
+        version = 1,
+        metadata = const {},
+        deleted = false;
+
   /// Creates instance from JSON
   factory SyncData.fromJson(
     Map<String, dynamic> json, {

@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   hive_plus_secure: ^1.1.12
-  isar_plus_flutter_libs: ^1.0.19
+  isar_plus_flutter_libs: ^1.0.21
   workmanager: ^0.9.0+3
   meta: ^1.9.0
   path_provider: ^2.1.1

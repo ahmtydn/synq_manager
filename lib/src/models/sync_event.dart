@@ -9,7 +9,7 @@ class SynqEvent<T> {
   const SynqEvent({
     required this.type,
     required this.key,
-    this.data,
+    required this.data,
     this.error,
     int? timestamp,
     this.metadata = const {},
@@ -48,7 +48,7 @@ class SynqEvent<T> {
   /// Creates a data deletion event
   factory SynqEvent.delete({
     required String key,
-    SyncData<T>? data,
+    required SyncData<T> data,
     Map<String, dynamic> metadata = const {},
   }) {
     return SynqEvent<T>(
@@ -66,6 +66,7 @@ class SynqEvent<T> {
     Map<String, dynamic> metadata = const {},
   }) {
     return SynqEvent<T>(
+      data: SyncData.empty(),
       type: SynqEventType.syncStart,
       key: key,
       timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -79,6 +80,7 @@ class SynqEvent<T> {
     Map<String, dynamic> metadata = const {},
   }) {
     return SynqEvent<T>(
+      data: SyncData.empty(),
       type: SynqEventType.syncComplete,
       key: key,
       timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -93,6 +95,7 @@ class SynqEvent<T> {
     Map<String, dynamic> metadata = const {},
   }) {
     return SynqEvent<T>(
+      data: SyncData.empty(),
       type: SynqEventType.syncError,
       key: key,
       error: error,
@@ -122,6 +125,7 @@ class SynqEvent<T> {
     Map<String, dynamic> metadata = const {},
   }) {
     return SynqEvent<T>(
+      data: SyncData.empty(),
       type: SynqEventType.connected,
       key: key,
       timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -136,6 +140,7 @@ class SynqEvent<T> {
     Map<String, dynamic> metadata = const {},
   }) {
     return SynqEvent<T>(
+      data: SyncData.empty(),
       type: SynqEventType.disconnected,
       key: key,
       error: error,
@@ -150,6 +155,7 @@ class SynqEvent<T> {
     Map<String, dynamic> metadata = const {},
   }) {
     return SynqEvent<T>(
+      data: SyncData.empty(),
       type: SynqEventType.cloudSyncStart,
       key: key,
       timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -163,6 +169,7 @@ class SynqEvent<T> {
     Map<String, dynamic> metadata = const {},
   }) {
     return SynqEvent<T>(
+      data: SyncData.empty(),
       type: SynqEventType.cloudSyncSuccess,
       key: key,
       timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -177,6 +184,7 @@ class SynqEvent<T> {
     Map<String, dynamic> metadata = const {},
   }) {
     return SynqEvent<T>(
+      data: SyncData.empty(),
       type: SynqEventType.cloudSyncError,
       key: key,
       error: error,
@@ -191,6 +199,7 @@ class SynqEvent<T> {
     Map<String, dynamic> metadata = const {},
   }) {
     return SynqEvent<T>(
+      data: SyncData.empty(),
       type: SynqEventType.cloudFetchStart,
       key: key,
       timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -204,6 +213,7 @@ class SynqEvent<T> {
     Map<String, dynamic> metadata = const {},
   }) {
     return SynqEvent<T>(
+      data: SyncData.empty(),
       type: SynqEventType.cloudFetchSuccess,
       key: key,
       timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -218,35 +228,12 @@ class SynqEvent<T> {
     Map<String, dynamic> metadata = const {},
   }) {
     return SynqEvent<T>(
+      data: SyncData.empty(),
       type: SynqEventType.cloudFetchError,
       key: key,
       error: error,
       timestamp: DateTime.now().millisecondsSinceEpoch,
       metadata: metadata,
-    );
-  }
-
-  /// Creates instance from JSON
-  factory SynqEvent.fromJson(
-    Map<String, dynamic> json, {
-    FromJsonFunction<T>? fromJson,
-  }) {
-    return SynqEvent<T>(
-      type: SynqEventType.values.firstWhere(
-        (e) => e.name == json['type'],
-        orElse: () => SynqEventType.update,
-      ),
-      key: json['key'] as String,
-      data: json['data'] != null
-          ? SyncData<T>.fromJson(
-              json['data'] as Map<String, dynamic>,
-              fromJson: fromJson,
-            )
-          : null,
-      error: json['error'],
-      timestamp:
-          json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch,
-      metadata: Map<String, dynamic>.from(json['metadata'] as Map? ?? {}),
     );
   }
 
@@ -256,8 +243,8 @@ class SynqEvent<T> {
   /// Key associated with the event
   final String key;
 
-  /// Data associated with the event (if applicable)
-  final SyncData<T>? data;
+  /// Data associated with the event
+  final SyncData<T> data;
 
   /// Error information (if applicable)
   final Object? error;
@@ -273,7 +260,7 @@ class SynqEvent<T> {
     return {
       'type': type.name,
       'key': key,
-      'data': data?.toJson(toJson: toJson),
+      'data': data.toJson(toJson: toJson),
       'error': error?.toString(),
       'timestamp': timestamp,
       'metadata': metadata,

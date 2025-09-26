@@ -36,7 +36,6 @@ class SynqManager<T extends DocumentSerializable> {
       StreamController<SynqEvent<T>>.broadcast();
 
   /// Subscriptions to underlying services
-  StreamSubscription<SynqEvent<T>>? _storageSubscription;
   StreamSubscription<SynqEvent<T>>? _syncSubscription;
 
   /// Whether the manager is initialized
@@ -103,15 +102,6 @@ class SynqManager<T extends DocumentSerializable> {
   /// Initializes the manager
   Future<void> _initialize() async {
     try {
-      // Set up event forwarding from storage service
-      _storageSubscription = storageService.events.listen(
-        _eventController.add,
-        onError: (Object error) => _eventController.add(
-          SynqEvent<T>.syncError(key: '__storage__', error: error),
-        ),
-      );
-
-      // Set up event forwarding from sync service
       _syncSubscription = syncService.events.listen(
         _eventController.add,
         onError: (Object error) => _eventController.add(
@@ -123,6 +113,7 @@ class SynqManager<T extends DocumentSerializable> {
 
       _eventController.add(
         SynqEvent<T>(
+          data: SyncData<T>.empty(),
           type: SynqEventType.connected,
           key: '__manager_ready__',
           timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -359,7 +350,6 @@ class SynqManager<T extends DocumentSerializable> {
 
   /// Closes the manager and releases all resources
   Future<void> close() async {
-    await _storageSubscription?.cancel();
     await _syncSubscription?.cancel();
 
     await syncService.close();
@@ -497,8 +487,8 @@ class SynqListeners<T extends DocumentSerializable> {
   SynqListeners<T> onCreate(void Function(String key, T data) callback) {
     _subscriptions.add(
       _manager.onEvent(SynqEventType.create).listen((event) async {
-        if (event.data?.value != null) {
-          callback(event.key, event.data!.value!);
+        if (event.data.value != null) {
+          callback(event.key, event.data.value!);
         }
       }),
     );
@@ -509,8 +499,8 @@ class SynqListeners<T extends DocumentSerializable> {
   SynqListeners<T> onUpdate(void Function(String key, T data) callback) {
     _subscriptions.add(
       _manager.onEvent(SynqEventType.update).listen((event) async {
-        if (event.data?.value != null) {
-          callback(event.key, event.data!.value!);
+        if (event.data.value != null) {
+          callback(event.key, event.data.value!);
         }
       }),
     );
@@ -533,7 +523,7 @@ class SynqListeners<T extends DocumentSerializable> {
     _subscriptions.add(
       _manager.onData.listen((event) {
         String action;
-        var value = event.data?.value;
+        final value = event.data.value;
 
         switch (event.type) {
           case SynqEventType.create:
@@ -542,7 +532,6 @@ class SynqListeners<T extends DocumentSerializable> {
             action = 'update';
           case SynqEventType.delete:
             action = 'delete';
-            value = null;
           default:
             return;
         }
