@@ -146,7 +146,6 @@ class StorageService<T extends DocumentSerializable> {
               ),
             ),
         };
-        print('Storage event: $result');
         _eventController.add(result);
       },
       onError: (Object error) {
