@@ -95,6 +95,12 @@ class SyncService<T extends DocumentSerializable> {
   /// Active conflicts that need resolution
   final Map<String, DataConflict<T>> _activeConflicts = {};
 
+  /// Storage key for sync metadata
+  static const String _syncMetadataKey = '__sync_metadata__';
+
+  /// Box for storing sync metadata
+  Box<int>? _metadataBox;
+
   /// Creates a new sync service instance
   static Future<SyncService<T>> create<T extends DocumentSerializable>({
     required StorageService<T> storageService,
@@ -116,6 +122,12 @@ class SyncService<T extends DocumentSerializable> {
   /// Initializes the sync service
   Future<void> _initialize() async {
     try {
+      // Initialize metadata storage
+      await _initializeMetadataStorage();
+
+      // Load last sync timestamp
+      await _loadLastSyncTimestamp();
+
       // Set up connectivity monitoring
       _setupConnectivityMonitoring();
 
@@ -206,6 +218,57 @@ class SyncService<T extends DocumentSerializable> {
         );
       },
     );
+  }
+
+  /// Initializes metadata storage for sync timestamps
+  Future<void> _initializeMetadataStorage() async {
+    try {
+      // Open a dedicated box for sync metadata using HivePlusSecure API
+      final metadataBoxName = '${storageService.boxName}_sync_metadata';
+      _metadataBox = Hive.box<int>(
+        name: metadataBoxName,
+        encryptionKey: config.encryptionKey,
+      );
+    } catch (error) {
+      _eventController.add(
+        SynqEvent<T>.syncError(
+          key: '__metadata_storage_init__',
+          error: error,
+        ),
+      );
+      rethrow;
+    }
+  }
+
+  /// Loads last sync timestamp from persistent storage
+  Future<void> _loadLastSyncTimestamp() async {
+    try {
+      _lastSyncTimestamp = _metadataBox?.get(_syncMetadataKey) ?? 0;
+    } catch (error) {
+      _eventController.add(
+        SynqEvent<T>.syncError(
+          key: '__load_sync_timestamp__',
+          error: error,
+        ),
+      );
+      // Continue with default value (0) if loading fails
+      _lastSyncTimestamp = 0;
+    }
+  }
+
+  /// Saves last sync timestamp to persistent storage
+  Future<void> _saveLastSyncTimestamp() async {
+    try {
+      _metadataBox?.put(_syncMetadataKey, _lastSyncTimestamp);
+    } catch (error) {
+      _eventController.add(
+        SynqEvent<T>.syncError(
+          key: '__save_sync_timestamp__',
+          error: error,
+        ),
+      );
+      // Don't rethrow - sync should continue even if timestamp save fails
+    }
   }
 
   /// Tracks a change for synchronization
@@ -303,6 +366,7 @@ class SyncService<T extends DocumentSerializable> {
       }
 
       _lastSyncTimestamp = DateTime.now().millisecondsSinceEpoch;
+      await _saveLastSyncTimestamp();
       _eventController.add(SynqEvent<T>.syncComplete(key: '__sync__'));
     } catch (error) {
       _eventController.add(
@@ -760,6 +824,7 @@ class SyncService<T extends DocumentSerializable> {
           .cancelByUniqueName('sync_task_${storageService.boxName}');
     }
 
+    _metadataBox?.close();
     await _eventController.close();
   }
 }
