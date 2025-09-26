@@ -2,6 +2,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:hive_plus_secure/hive_plus_secure.dart';
 import 'package:synq_manager/src/events/event_types.dart';
 import 'package:synq_manager/src/models/conflict_resolution.dart';
@@ -425,7 +426,7 @@ extension SynqManagerExtensions<T extends DocumentSerializable>
       onError: onError ??
           (Object error) {
             // Default error handling - could be customized
-            print('SynqManager error: $error');
+            debugPrint('SynqManager error: $error');
           },
       onDone: onDone,
     );
