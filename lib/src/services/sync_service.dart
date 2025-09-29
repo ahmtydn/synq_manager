@@ -446,17 +446,28 @@ class SyncService<T extends DocumentSerializable> {
   Future<Map<String, SyncData<T>>> _getPendingChanges() async {
     final changes = <String, SyncData<T>>{};
 
-    // Only get explicitly tracked pending changes
+    // First, get explicitly tracked pending changes
     for (final key in List<String>.from(_pendingChanges)) {
       final data = await storageService.get(key);
       if (data != null) {
         changes[key] = data;
       } else {
-        // Remove non-existent keys from pending list
         _pendingChanges.remove(key);
       }
     }
-
+    if (changes.isEmpty) {
+      final allData = await storageService.getAll();
+      for (final entry in allData.entries) {
+        final key = entry.key;
+        final data = entry.value;
+        if (_lastSyncTimestamp > 0 && data.timestamp > _lastSyncTimestamp) {
+          changes[key] = data;
+          if (!_pendingChanges.contains(key)) {
+            _pendingChanges.add(key);
+          }
+        }
+      }
+    }
     return changes;
   }
 
