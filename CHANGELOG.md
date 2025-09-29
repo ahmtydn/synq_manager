@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.11]
+
+### Added
+- 📊 **Metadata Storage**: Implemented metadata storage for sync timestamps in SyncService
+- 🔄 **Empty SyncData Support**: Enhanced SynqManager and SyncEvent with empty SyncData support
+- 🎯 **Recent Data Retrieval**: Improved pending changes retrieval in SyncService to include recent data
+
+### Fixed
+- 🔧 **Dependency Management**: Reverted hive_plus_secure dependency to stable version 1.1.14 from git reference
+- 🐛 **Debug Logging**: Replaced print statements with debugPrint for better error handling and logging consistency
+- 🧹 **Code Cleanup**: Removed debug print statements from storage event handling
+
+### Enhanced
+- ⚡ **Storage Service**: Updated StorageService event handling for better performance
+- 🛡️ **Error Management**: Improved error handling throughout SynqManager core functionality
+- 📈 **Sync Performance**: Enhanced sync service with better metadata tracking and recent data handling
+
 ## [1.0.10]
 
 ### Added
