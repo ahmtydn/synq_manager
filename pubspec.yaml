@@ -10,10 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  hive_plus_secure:
-    git:
-      url: https://github.com/ahmtydn/hive_plus.git
-      ref: e10cb75d65f0f4f90fc2e07c17176c5499693d3b
+  hive_plus_secure: ^1.1.14
   isar_plus_flutter_libs: ^1.0.21
   workmanager: ^0.9.0+3
   meta: ^1.9.0
