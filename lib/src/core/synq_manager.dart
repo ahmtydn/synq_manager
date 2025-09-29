@@ -224,10 +224,17 @@ class SynqManager<T extends DocumentSerializable> {
     await storageService.update(key, value, metadata: metadata);
   }
 
-  /// Deletes a value with the given key
+  /// Deletes a value with the given key (soft delete)
   Future<bool> delete(String key) async {
     _ensureReady();
     return storageService.delete(key);
+  }
+
+  /// Permanently deletes a value with the given key (hard delete)
+  /// Warning: This bypasses sync and removes the item immediately
+  Future<bool> hardDelete(String key) async {
+    _ensureReady();
+    return storageService.hardDelete(key);
   }
 
   /// Retrieves all active values

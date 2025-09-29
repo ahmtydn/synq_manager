@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.12]
+
+### Fixed
+🔧 **Delete Sync Issue**: Fixed critical bug where deleted items were not being synced to cloud
+- Changed delete operation from hard delete to soft delete (marks items as `deleted: true`)
+- Added automatic hard delete after successful cloud sync to maintain storage efficiency
+- Ensures all delete operations are properly synchronized with cloud services
+
+### Added
+🗑️ **Hard Delete Support**: Added `hardDelete()` method for permanent local deletion
+- Available in both `SynqManager` and `StorageService`
+- Bypasses sync and removes items immediately from local storage
+- Should be used with caution as it doesn't sync deletions to cloud
+
+### Enhanced
+⚡ **Sync Performance**: Improved sync service to handle deleted items correctly
+- Deleted items are now included in pending changes and synced to cloud
+- After successful cloud sync, deleted items are automatically hard deleted locally
+- Better storage space management with automatic cleanup of synced deletions
+
 ## [1.0.11]
 
 ### Added

@@ -282,7 +282,7 @@ class StorageService<T extends DocumentSerializable> {
     }
   }
 
-  /// Deletes data with the given key
+  /// Deletes data with the given key (soft delete - marks as deleted)
   Future<bool> delete(String key) async {
     if (!isReady) throw StateError('Storage service not ready');
 
@@ -290,10 +290,43 @@ class StorageService<T extends DocumentSerializable> {
       final existing = await get(key);
       if (existing == null) return false;
 
-      _box!.delete(
-        key,
+      // Soft delete - mark as deleted instead of removing
+      final deletedData = existing.incrementVersion(
+        isDeleted: true,
+        newTimestamp: DateTime.now().millisecondsSinceEpoch,
       );
 
+      _box!.put(key, deletedData);
+
+      // Emit delete event
+      _eventController.add(
+        SynqEvent<T>.delete(
+          key: key,
+          data: deletedData,
+        ),
+      );
+
+      return true;
+    } catch (error) {
+      _eventController.add(
+        SynqEvent<T>.syncError(
+          key: key,
+          error: error,
+        ),
+      );
+      rethrow;
+    }
+  }
+
+  /// Permanently deletes data with the given key (hard delete)
+  Future<bool> hardDelete(String key) async {
+    if (!isReady) throw StateError('Storage service not ready');
+
+    try {
+      final existing = await get(key);
+      if (existing == null) return false;
+
+      _box!.delete(key);
       return true;
     } catch (error) {
       _eventController.add(

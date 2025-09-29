@@ -595,18 +595,52 @@ class SyncService<T extends DocumentSerializable> {
     }
   }
 
-  /// Clears processed changes from pending queue
+  /// Clears processed changes from pending queue and hard deletes synced deleted items
   void _clearProcessedChanges(
     Map<String, SyncData<T>> localChanges,
     List<DataConflict<T>> conflicts,
   ) {
     // Remove successfully processed items from pending changes
     final conflictKeys = conflicts.map((c) => c.key).toSet();
+    final deletedKeys = <String>[];
+
     for (final key in localChanges.keys) {
       if (!conflictKeys.contains(key)) {
         _pendingChanges.remove(key);
+
+        // Collect deleted items for hard deletion
+        final data = localChanges[key];
+        if (data != null && data.deleted) {
+          deletedKeys.add(key);
+        }
       }
     }
+
+    // Hard delete synced deleted items
+    _hardDeleteSyncedItems(deletedKeys);
+  }
+
+  /// Hard deletes items that have been successfully synced to cloud
+  void _hardDeleteSyncedItems(List<String> deletedKeys) {
+    if (deletedKeys.isEmpty) return;
+
+    // Perform hard deletion asynchronously to avoid blocking sync
+    Future.microtask(() async {
+      for (final key in deletedKeys) {
+        try {
+          await storageService.hardDelete(key);
+        } catch (error) {
+          // Log error but don't fail the sync process
+          _eventController.add(
+            SynqEvent<T>.syncError(
+              key: key,
+              error: error,
+              metadata: {'operation': 'hardDelete'},
+            ),
+          );
+        }
+      }
+    });
   }
 
   /// Processes remote data, excluding conflicted items
