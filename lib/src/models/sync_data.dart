@@ -1,10 +1,5 @@
 import 'package:meta/meta.dart';
-
-/// Function type for creating T from JSON
-typedef FromJsonFunction<T> = T Function(Map<String, dynamic> json);
-
-/// Function type for converting T to JSON
-typedef ToJsonFunction<T> = Map<String, dynamic> Function(T object);
+import 'package:synq_manager/synq_manager.dart';
 
 /// Generic data container for synchronization operations
 @immutable

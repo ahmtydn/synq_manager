@@ -1,6 +1,5 @@
 import 'package:meta/meta.dart';
-import 'package:synq_manager/src/models/conflict_resolution.dart';
-import 'package:synq_manager/src/models/sync_data.dart';
+import 'package:synq_manager/synq_manager.dart';
 
 /// Result of a cloud synchronization operation containing synced data and conflicts.
 @immutable

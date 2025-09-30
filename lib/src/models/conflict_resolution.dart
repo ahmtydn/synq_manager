@@ -1,5 +1,5 @@
 import 'package:meta/meta.dart';
-import 'package:synq_manager/src/models/sync_data.dart';
+import 'package:synq_manager/synq_manager.dart';
 
 /// Types of conflicts that can occur during synchronization
 enum ConflictType {
@@ -90,12 +90,6 @@ class ConflictContext<T> {
   /// Whether this is a version mismatch conflict
   bool get isVersionMismatch => type == ConflictType.versionMismatch;
 }
-
-/// Universal callback function for handling all types of conflicts
-/// Returns the action user wants to take for this conflict
-typedef ConflictResolutionCallback<T> = Future<ConflictAction> Function(
-  ConflictContext<T> context,
-);
 
 /// Strategy for resolving conflicts during synchronization
 enum ConflictResolutionStrategy {

@@ -47,6 +47,9 @@ enum SynqEventType {
 
   /// Conflict resolved
   conflictResolved,
+
+  /// Sync progress update
+  syncProgress,
 }
 
 /// Priority levels for synchronization operations

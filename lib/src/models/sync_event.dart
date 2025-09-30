@@ -1,6 +1,5 @@
 import 'package:meta/meta.dart';
-import 'package:synq_manager/src/events/event_types.dart';
-import 'package:synq_manager/src/models/sync_data.dart';
+import 'package:synq_manager/synq_manager.dart';
 
 /// Event emitted during synchronization operations
 @immutable
@@ -232,6 +231,20 @@ class SynqEvent<T> {
       type: SynqEventType.cloudFetchError,
       key: key,
       error: error,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      metadata: metadata,
+    );
+  }
+
+  /// Creates a sync progress event
+  factory SynqEvent.syncProgress({
+    required String key,
+    Map<String, dynamic> metadata = const {},
+  }) {
+    return SynqEvent<T>(
+      data: SyncData.empty(),
+      type: SynqEventType.syncProgress,
+      key: key,
       timestamp: DateTime.now().millisecondsSinceEpoch,
       metadata: metadata,
     );

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.15]
+
+### Fixed
+🔧 **User Account Migration Loop**: Fixed critical bug causing infinite sync loops during offline data upload
+- Fixed missing user ID persistence in `_uploadLocalData()` function that caused endless account migration cycles
+- Added `cloudUserId` parameter to `_uploadLocalData()` method to ensure user ID is properly stored after successful uploads
+- Enhanced account conflict resolution to persist user ID in all scenarios (`keepLocalData` action)
+- Improved account scenario detection to prevent false positive offline data upload triggers
+
+### Enhanced
+🚀 **Sync Reliability**: Improved account migration handling and prevented unnecessary sync repetitions
+- Better user ID tracking across different account scenarios (guest sign-in, offline data upload, account switch)
+- Enhanced logging and metadata for account scenario debugging
+- Optimized sync flow to avoid redundant migration checks after successful user ID persistence
+
 ## [1.0.14]
 
 ### Fixed

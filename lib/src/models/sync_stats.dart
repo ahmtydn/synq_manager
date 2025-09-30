@@ -1,5 +1,5 @@
 import 'package:meta/meta.dart';
-import 'package:synq_manager/src/events/event_types.dart';
+import 'package:synq_manager/synq_manager.dart';
 
 /// Comprehensive statistics about the current sync state.
 @immutable

@@ -70,10 +70,12 @@ class _NotesScreenState extends State<NotesScreen> {
           enableBackgroundSync: true,
           enableConflictResolution: true,
         ),
-        cloudSyncFunction: _mockCloudSync,
-        cloudFetchFunction: _mockCloudFetch,
-        fromJson: Note.fromJson,
-        toJson: (note) => note.toJson(),
+        callbacks: SynqCallbacks(
+          cloudFetchFunction: _mockCloudFetch,
+          cloudSyncFunction: _mockCloudSync,
+          fromJson: Note.fromJson,
+          toJson: (note) => note.toJson(),
+        ),
       );
 
       // Sadeleştirilmiş Socket.io style event listening

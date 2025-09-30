@@ -4,13 +4,13 @@ import 'dart:math' as math;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive_plus_secure/hive_plus_secure.dart';
 import 'package:synq_manager/src/events/event_types.dart';
-import 'package:synq_manager/src/models/cloud_callbacks.dart';
 import 'package:synq_manager/src/models/conflict_resolution.dart';
 import 'package:synq_manager/src/models/sync_config.dart';
 import 'package:synq_manager/src/models/sync_data.dart';
 import 'package:synq_manager/src/models/sync_event.dart';
 import 'package:synq_manager/src/models/sync_result.dart';
 import 'package:synq_manager/src/models/sync_stats.dart';
+import 'package:synq_manager/src/models/synq_callbacks.dart';
 import 'package:synq_manager/src/services/storage_service.dart';
 import 'package:workmanager/workmanager.dart';
 
@@ -28,7 +28,8 @@ class SyncService<T extends DocumentSerializable> {
     required this.config,
     required this.cloudSyncFunction,
     required this.cloudFetchFunction,
-  });
+    ConflictResolutionCallback? conflictResolutionCallback,
+  }) : _conflictResolutionCallback = conflictResolutionCallback;
 
   final StorageService<T> storageService;
   final SyncConfig config;
@@ -64,6 +65,9 @@ class SyncService<T extends DocumentSerializable> {
   static const _syncTimestampKey = '__sync_timestamp__';
   static const _userIdKey = '__user_id__';
 
+  // Conflict resolution
+  ConflictResolutionCallback? _conflictResolutionCallback;
+
   int get lastSyncTimestamp => _getTimestamp();
   String? get _storedUserId => _metadataBox?.get(_userIdKey);
 
@@ -73,12 +77,14 @@ class SyncService<T extends DocumentSerializable> {
     required SyncConfig config,
     required CloudSyncFunction<T> cloudSyncFunction,
     required CloudFetchFunction<T> cloudFetchFunction,
+    ConflictResolutionCallback? conflictResolutionCallback,
   }) async {
     final service = SyncService<T>._(
       storageService: storageService,
       config: config,
       cloudSyncFunction: cloudSyncFunction,
       cloudFetchFunction: cloudFetchFunction,
+      conflictResolutionCallback: conflictResolutionCallback,
     );
 
     await service._initialize();
@@ -162,7 +168,7 @@ class SyncService<T extends DocumentSerializable> {
   void _startStorageMonitoring() {
     storageService.events.listen(
       _handleStorageEvent,
-      onError: (error, stackTrace) =>
+      onError: (Object error, StackTrace stackTrace) =>
           _emitError('storage_monitoring', error, stackTrace),
     );
   }
@@ -446,6 +452,52 @@ class SyncService<T extends DocumentSerializable> {
     ));
   }
 
+  /// Emits account scenario detection event.
+  void _emitAccountScenarioEvent(
+    _AccountScenario scenario,
+    CloudFetchResponse<T> response,
+  ) {
+    final scenarioMap = {
+      _AccountScenario.guestSignIn: {
+        'name': 'guest_sign_in',
+        'description': 'Guest user signing in with cloud data',
+        'action': 'Accepting cloud data and clearing local data'
+      },
+      _AccountScenario.offlineDataUpload: {
+        'name': 'offline_data_upload',
+        'description': 'Uploading offline-created data to cloud',
+        'action': 'Pushing local data to cloud'
+      },
+      _AccountScenario.accountSwitch: {
+        'name': 'account_switch',
+        'description': 'Switching between different accounts',
+        'action': 'Resolving account conflict, awaiting user preference'
+      },
+      _AccountScenario.normalSync: {
+        'name': 'normal_sync',
+        'description': 'Normal sync for same user',
+        'action': 'Continuing with standard sync process'
+      },
+    };
+
+    final info = scenarioMap[scenario]!;
+
+    _emitEvent(SynqEvent<T>.syncProgress(
+      key: '__account_scenario__',
+      metadata: {
+        'scenario': info['name'],
+        'description': info['description'],
+        'plannedAction': info['action'],
+        'storedUserId': _storedUserId,
+        'cloudUserId': response.cloudUserId,
+        'hasLocalData': _pendingChanges.isNotEmpty,
+        'hasCloudData': response.hasData,
+        'localDataCount': _pendingChanges.length,
+        'cloudDataCount': response.data.length,
+      },
+    ));
+  }
+
   /// Handles user account migration scenarios.
   ///
   /// Scenarios handled:
@@ -457,23 +509,64 @@ class SyncService<T extends DocumentSerializable> {
       CloudFetchResponse<T> response) async {
     final scenario = await _analyzeAccountScenario(response);
 
+    // Emit account scenario detection event
+    _emitAccountScenarioEvent(scenario, response);
+
     switch (scenario) {
       case _AccountScenario.guestSignIn:
+        _emitEvent(SynqEvent<T>.syncProgress(
+          key: '__user_migration__',
+          metadata: {
+            'action': 'accepting_cloud_data',
+            'message': 'Guest user detected - accepting cloud data',
+          },
+        ));
         await _acceptCloudData(response);
         break;
 
       case _AccountScenario.offlineDataUpload:
-        await _uploadLocalData();
+        _emitEvent(SynqEvent<T>.syncProgress(
+          key: '__user_migration__',
+          metadata: {
+            'action': 'uploading_local_data',
+            'message': 'Offline data detected - uploading to cloud',
+          },
+        ));
+        await _uploadLocalData(response.cloudUserId);
         break;
 
       case _AccountScenario.accountSwitch:
+        _emitEvent(SynqEvent<T>.syncProgress(
+          key: '__user_migration__',
+          metadata: {
+            'action': 'resolving_account_conflict',
+            'message': 'Account switch detected - resolving conflict',
+          },
+        ));
         await _resolveAccountConflict(response);
         break;
 
       case _AccountScenario.normalSync:
+        _emitEvent(SynqEvent<T>.syncProgress(
+          key: '__user_migration__',
+          metadata: {
+            'action': 'normal_sync',
+            'message': 'Same user detected - continuing normal sync',
+          },
+        ));
         // Continue with normal sync
         break;
     }
+
+    // Emit migration completion event
+    _emitEvent(SynqEvent<T>.syncProgress(
+      key: '__user_migration__',
+      metadata: {
+        'action': 'migration_completed',
+        'message': 'User account migration completed successfully',
+        'scenario': scenario.toString().split('.').last,
+      },
+    ));
   }
 
   /// Analyzes the account migration scenario.
@@ -518,9 +611,28 @@ class SyncService<T extends DocumentSerializable> {
 
   /// Accepts cloud data and discards local data (guest sign-in scenario).
   Future<void> _acceptCloudData(CloudFetchResponse<T> response) async {
+    _emitEvent(SynqEvent<T>.syncProgress(
+      key: '__accept_cloud_data__',
+      metadata: {
+        'action': 'clearing_local_data',
+        'message': 'Clearing local data...',
+        'cloudDataCount': response.data.length,
+      },
+    ));
+
     await storageService.clear();
     await _persistUserId(response.cloudUserId);
 
+    _emitEvent(SynqEvent<T>.syncProgress(
+      key: '__accept_cloud_data__',
+      metadata: {
+        'action': 'applying_cloud_data',
+        'message': 'Applying cloud data...',
+        'cloudDataCount': response.data.length,
+      },
+    ));
+
+    var appliedCount = 0;
     for (final entry in response.data.entries) {
       if (!entry.value.deleted && entry.value.value != null) {
         await storageService.put(
@@ -528,21 +640,73 @@ class SyncService<T extends DocumentSerializable> {
           entry.value.value!,
           metadata: entry.value.metadata,
         );
+        appliedCount++;
       }
     }
+
+    _emitEvent(SynqEvent<T>.syncProgress(
+      key: '__accept_cloud_data__',
+      metadata: {
+        'action': 'cloud_data_applied',
+        'message': 'Cloud data successfully applied',
+        'appliedCount': appliedCount,
+        'totalCount': response.data.length,
+      },
+    ));
   }
 
   /// Uploads all local data to cloud (offline data upload scenario).
-  Future<void> _uploadLocalData() async {
+  Future<void> _uploadLocalData([String? cloudUserId]) async {
     final allLocal = await storageService.getAll();
+
+    _emitEvent(SynqEvent<T>.syncProgress(
+      key: '__upload_local_data__',
+      metadata: {
+        'action': 'preparing_upload',
+        'message': 'Preparing local data for cloud upload...',
+        'localDataCount': allLocal.length,
+      },
+    ));
+
     if (allLocal.isNotEmpty) {
+      _emitEvent(SynqEvent<T>.syncProgress(
+        key: '__upload_local_data__',
+        metadata: {
+          'action': 'uploading_data',
+          'message': 'Uploading local data to cloud...',
+          'localDataCount': allLocal.length,
+        },
+      ));
+
       await _pushToCloud(allLocal);
+
+      _emitEvent(SynqEvent<T>.syncProgress(
+        key: '__upload_local_data__',
+        metadata: {
+          'action': 'upload_completed',
+          'message': 'Local data successfully uploaded to cloud',
+          'uploadedCount': allLocal.length,
+        },
+      ));
+
+      // Persist user ID to prevent infinite loop
+      if (cloudUserId != null) {
+        await _persistUserId(cloudUserId);
+      }
+    } else {
+      _emitEvent(SynqEvent<T>.syncProgress(
+        key: '__upload_local_data__',
+        metadata: {
+          'action': 'no_data_to_upload',
+          'message': 'No local data found to upload',
+        },
+      ));
     }
   }
 
   /// Resolves account conflict by asking user preference.
   Future<void> _resolveAccountConflict(CloudFetchResponse<T> response) async {
-    if (config.conflictResolutionCallback == null) {
+    if (_conflictResolutionCallback == null) {
       throw StateError(
         'Account conflict detected but no resolution callback provided',
       );
@@ -557,7 +721,7 @@ class SyncService<T extends DocumentSerializable> {
       hasCloudData: response.hasData,
     );
 
-    final action = await config.conflictResolutionCallback!(context);
+    final action = await _conflictResolutionCallback!(context);
     await _applyAccountAction(action, response);
   }
 
@@ -572,7 +736,7 @@ class SyncService<T extends DocumentSerializable> {
         break;
 
       case ConflictAction.keepLocalData:
-        await _uploadLocalData();
+        await _uploadLocalData(response.cloudUserId);
         break;
 
       case ConflictAction.cancel:

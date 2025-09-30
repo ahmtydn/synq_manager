@@ -44,17 +44,11 @@ class SynqManager<T extends DocumentSerializable> {
   ///
   /// [instanceName] - Unique name for this manager instance
   /// [config] - Configuration for synchronization
-  /// [cloudSyncFunction] - Function to push data to cloud
-  /// [cloudFetchFunction] - Function to fetch data from cloud
-  /// [fromJson] - Function to deserialize T from JSON
-  /// [toJson] - Function to serialize T to JSON
+  /// [callbacks] - Collection of callback functions (sync, fetch, conflict resolution, serialization)
   static Future<SynqManager<T>> getInstance<T extends DocumentSerializable>({
     required String instanceName,
-    required CloudSyncFunction<T> cloudSyncFunction,
-    required CloudFetchFunction<T> cloudFetchFunction,
+    required SynqCallbacks<T> callbacks,
     SyncConfig? config,
-    FromJsonFunction<T>? fromJson,
-    ToJsonFunction<T>? toJson,
   }) async {
     final key = '${instanceName}_$T';
 
@@ -72,15 +66,16 @@ class SynqManager<T extends DocumentSerializable> {
       boxName: instanceName,
       encryptionKey: finalConfig.encryptionKey,
       maxSizeMiB: finalConfig.maxStorageSize,
-      fromJson: fromJson,
-      toJson: toJson,
+      fromJson: callbacks.fromJson,
+      toJson: callbacks.toJson,
     );
 
     final syncService = await SyncService.create<T>(
       storageService: storageService,
       config: finalConfig,
-      cloudSyncFunction: cloudSyncFunction,
-      cloudFetchFunction: cloudFetchFunction,
+      cloudSyncFunction: callbacks.cloudSyncFunction,
+      cloudFetchFunction: callbacks.cloudFetchFunction,
+      conflictResolutionCallback: callbacks.conflictResolutionCallback,
     );
 
     final manager = SynqManager<T>._(
