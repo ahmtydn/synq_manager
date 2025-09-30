@@ -303,7 +303,7 @@ class SyncService<T extends DocumentSerializable> {
   /// 2. Get all local data
   /// 3. Detect conflicts between local and remote
   /// 4. Push non-conflicted local data
-  /// 5. Apply non-conflicted remote data
+  /// 5. Apply non-conflicted remote data (excluding pushed items)
   /// 6. Handle conflicts according to strategy
   Future<void> _performInitialSync() async {
     final remoteResponse = await _fetchFromCloud();
@@ -311,12 +311,15 @@ class SyncService<T extends DocumentSerializable> {
 
     final conflicts = _detectConflicts(localData, remoteResponse.data);
     final cleanLocal = _removeConflicts(localData, conflicts);
+    final pushedKeys = <String>{};
 
     if (cleanLocal.isNotEmpty) {
       await _pushToCloud(cleanLocal);
+      pushedKeys.addAll(cleanLocal.keys);
     }
 
-    await _applyRemoteChanges(remoteResponse.data, conflicts);
+    await _applyRemoteChanges(remoteResponse.data, conflicts,
+        excludeKeys: pushedKeys);
     await _resolveConflicts(conflicts);
 
     _pendingChanges.clear();
@@ -329,22 +332,27 @@ class SyncService<T extends DocumentSerializable> {
   /// 2. Get local changes since last sync
   /// 3. Detect conflicts
   /// 4. Push non-conflicted local changes
-  /// 5. Apply non-conflicted remote changes
+  /// 5. Apply non-conflicted remote changes (excluding pushed items)
   /// 6. Handle conflicts
   Future<void> _performIncrementalSync() async {
     final remoteResponse = await _fetchFromCloud();
     final localChanges = await _gatherPendingChanges();
 
     final conflicts = _detectConflicts(localChanges, remoteResponse.data);
+    final pushedKeys = <String>{};
 
     if (localChanges.isNotEmpty) {
       final cleanLocal = _removeConflicts(localChanges, conflicts);
       if (cleanLocal.isNotEmpty) {
         await _pushToCloud(cleanLocal);
+        // Track which keys were successfully pushed
+        pushedKeys.addAll(cleanLocal.keys);
       }
     }
 
-    await _applyRemoteChanges(remoteResponse.data, conflicts);
+    // Apply remote changes but exclude items we just pushed
+    await _applyRemoteChanges(remoteResponse.data, conflicts,
+        excludeKeys: pushedKeys);
     await _resolveConflicts(conflicts);
 
     _clearProcessedChanges(localChanges, conflicts);
@@ -390,7 +398,7 @@ class SyncService<T extends DocumentSerializable> {
     final threshold = _getTimestamp();
 
     for (final entry in allData.entries) {
-      if (entry.value.timestamp > threshold) {
+      if (entry.value.timestamp > threshold + 1000) {
         changes[entry.key] = entry.value;
         _pendingChanges.add(entry.key);
       }
@@ -495,7 +503,8 @@ class SyncService<T extends DocumentSerializable> {
       return _AccountScenario.accountSwitch;
     }
 
-    // Has stored user, has local data, different cloud user, no cloud data
+    // Has stored user, has local data,
+    // different cloud user, no cloud data
     if (_storedUserId != null &&
         hasLocal &&
         cloudUserId != null &&
@@ -635,6 +644,9 @@ class SyncService<T extends DocumentSerializable> {
       }
 
       _emitCloudSyncSuccess(result);
+      for (final key in localChanges.keys) {
+        _pendingChanges.remove(key);
+      }
     } catch (error) {
       _emitCloudSyncError(error);
       rethrow;
@@ -664,12 +676,15 @@ class SyncService<T extends DocumentSerializable> {
   /// Applies non-conflicted remote changes to local storage.
   Future<void> _applyRemoteChanges(
     Map<String, SyncData<T>> remoteData,
-    List<DataConflict<T>> conflicts,
-  ) async {
+    List<DataConflict<T>> conflicts, {
+    Set<String> excludeKeys = const {},
+  }) async {
     final conflictKeys = conflicts.map((c) => c.key).toSet();
 
     for (final entry in remoteData.entries) {
       if (conflictKeys.contains(entry.key)) continue;
+      // Skip items that were just pushed to avoid re-applying same data
+      if (excludeKeys.contains(entry.key)) continue;
 
       await _applyRemoteItem(entry.key, entry.value);
     }
@@ -866,6 +881,7 @@ class SyncService<T extends DocumentSerializable> {
     try {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       _metadataBox?.put(_syncTimestampKey, timestamp.toString());
+      _pendingChanges.clear();
     } catch (error, stackTrace) {
       _emitError('persist_timestamp', error, stackTrace);
       // Don't rethrow - sync should continue despite timestamp persistence failure

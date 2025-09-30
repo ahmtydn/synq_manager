@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.14]
+
+### Fixed
+🔄 **Infinite Push Loop**: Fixed critical bug where successful push operations caused infinite sync loops
+- Added timestamp buffer (1 second) in `_scanForUntrackedChanges()` to prevent recently synced items from being detected as new changes
+- Enhanced `_persistSyncTimestamp()` to clear pending changes after successful timestamp persistence
+- Improved `_pushToCloud()` to immediately remove pushed keys from pending changes upon successful completion
+- Modified sync strategy to exclude successfully pushed items from remote data application, preventing unnecessary re-writes
+- Added `excludeKeys` parameter to `_applyRemoteChanges()` to avoid re-applying data that was just pushed
+- Enhanced `StorageService` with `putWithTimestamp()` method for sync operations that preserve original timestamps
+
+### Enhanced
+⚡ **Sync Performance**: Significantly improved sync efficiency and reliability
+- Eliminated redundant local storage writes after successful push operations
+- Prevented timestamp conflicts between local and remote data during sync cycles
+- Optimized pending changes tracking to avoid false positives
+- Better separation between user-initiated changes and sync-related operations
+
 ## [1.0.13]
 
 ### Changed
