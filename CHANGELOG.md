@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.13]
+
+### Changed
+🔄 **Code Structure Refactoring**: Improved code organization and API structure
+- Extracted cloud callback types to separate `CloudCallbacks` model file
+- Moved `SyncResult` and `SyncStats` classes to dedicated model files for better maintainability
+- Enhanced type safety with proper CloudFetchResponse structure including `cloudUserId` field
+- Updated example app to demonstrate new CloudFetchResponse format
+- Improved export structure in main library file for better API access
+
+### Added
+✨ **Enhanced Cloud Integration**: New CloudFetchResponse structure with user identity support
+- Added `cloudUserId` field to CloudFetchResponse for better user tracking
+- Enhanced metadata support in cloud operations
+
 ## [1.0.12]
 
 ### Fixed

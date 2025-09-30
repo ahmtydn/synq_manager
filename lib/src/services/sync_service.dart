@@ -3,102 +3,16 @@ import 'dart:math' as math;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive_plus_secure/hive_plus_secure.dart';
-import 'package:meta/meta.dart';
 import 'package:synq_manager/src/events/event_types.dart';
+import 'package:synq_manager/src/models/cloud_callbacks.dart';
 import 'package:synq_manager/src/models/conflict_resolution.dart';
 import 'package:synq_manager/src/models/sync_config.dart';
 import 'package:synq_manager/src/models/sync_data.dart';
 import 'package:synq_manager/src/models/sync_event.dart';
+import 'package:synq_manager/src/models/sync_result.dart';
+import 'package:synq_manager/src/models/sync_stats.dart';
 import 'package:synq_manager/src/services/storage_service.dart';
 import 'package:workmanager/workmanager.dart';
-
-/// Result of a cloud synchronization operation containing synced data and conflicts.
-@immutable
-class SyncResult<T> {
-  const SyncResult({
-    required this.success,
-    this.remoteData = const {},
-    this.conflicts = const [],
-    this.error,
-    this.metadata = const {},
-  });
-
-  final bool success;
-  final Map<String, SyncData<T>> remoteData;
-  final List<DataConflict<T>> conflicts;
-  final Object? error;
-  final Map<String, dynamic> metadata;
-
-  bool get hasConflicts => conflicts.isNotEmpty;
-  bool get hasError => error != null;
-}
-
-/// Response from a cloud fetch operation including user identity information.
-@immutable
-class CloudFetchResponse<T> {
-  const CloudFetchResponse({
-    required this.data,
-    this.cloudUserId,
-    this.metadata = const {},
-  });
-
-  final Map<String, SyncData<T>> data;
-  final String? cloudUserId;
-  final Map<String, dynamic> metadata;
-
-  bool get hasData => data.isNotEmpty;
-  bool get hasUserId => cloudUserId != null;
-}
-
-/// Function signature for pushing local changes to cloud storage.
-typedef CloudSyncFunction<T> = Future<SyncResult<T>> Function(
-  Map<String, SyncData<T>> localChanges,
-  Map<String, String> headers,
-);
-
-/// Function signature for fetching remote changes from cloud storage.
-typedef CloudFetchFunction<T> = Future<CloudFetchResponse<T>> Function(
-  int lastSyncTimestamp,
-  Map<String, String> headers,
-);
-
-/// Comprehensive statistics about the current sync state.
-@immutable
-class SyncStats {
-  const SyncStats({
-    required this.lastSyncTimestamp,
-    required this.pendingChangesCount,
-    required this.activeConflictsCount,
-    required this.connectivityStatus,
-    required this.isSyncing,
-  });
-
-  final int lastSyncTimestamp;
-  final int pendingChangesCount;
-  final int activeConflictsCount;
-  final ConnectivityStatus connectivityStatus;
-  final bool isSyncing;
-
-  Duration get timeSinceLastSync {
-    if (lastSyncTimestamp == 0) return Duration.zero;
-    return Duration(
-      milliseconds: DateTime.now().millisecondsSinceEpoch - lastSyncTimestamp,
-    );
-  }
-
-  bool get hasNeverSynced => lastSyncTimestamp == 0;
-  bool get hasPendingChanges => pendingChangesCount > 0;
-  bool get hasConflicts => activeConflictsCount > 0;
-  bool get isOnline => connectivityStatus == ConnectivityStatus.online;
-
-  @override
-  String toString() => 'SyncStats('
-      'lastSync: ${DateTime.fromMillisecondsSinceEpoch(lastSyncTimestamp)}, '
-      'pending: $pendingChangesCount, '
-      'conflicts: $activeConflictsCount, '
-      'status: $connectivityStatus, '
-      'syncing: $isSyncing)';
-}
 
 /// Orchestrates synchronization between local storage and cloud backend.
 ///

@@ -184,7 +184,7 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   // Mock cloud fetch function - simulates fetching data from a cloud service
-  Future<Map<String, SyncData<Note>>> _mockCloudFetch(
+  Future<CloudFetchResponse<Note>> _mockCloudFetch(
     int lastSyncTimestamp,
     Map<String, String> headers,
   ) async {
@@ -195,7 +195,10 @@ class _NotesScreenState extends State<NotesScreen> {
     debugPrint('📥 Cloud fetch: lastSync=$lastSyncTimestamp');
 
     // Return empty data for demo (in real app, return actual cloud data)
-    return {};
+    return const CloudFetchResponse<Note>(
+      data: {},
+      cloudUserId: 'demo_user_123',
+    );
   }
 
   Future<void> _addNote() async {

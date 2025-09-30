@@ -10,9 +10,12 @@ export 'package:hive_plus_secure/hive_plus_secure.dart'
 export 'src/core/synq_listeners.dart';
 export 'src/core/synq_manager.dart';
 export 'src/events/event_types.dart';
+export 'src/models/cloud_callbacks.dart';
 export 'src/models/conflict_resolution.dart';
 export 'src/models/sync_config.dart';
 export 'src/models/sync_data.dart';
 export 'src/models/sync_event.dart';
+export 'src/models/sync_result.dart';
+export 'src/models/sync_stats.dart';
 export 'src/services/storage_service.dart';
 export 'src/services/sync_service.dart';
