@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.16]
+### Fixed
+🎯 **onInit Callback Issue**: Fixed critical timing issue where onInit callbacks were not being triggered
+- Implemented `_waitUntilReady()` helper method in `SynqListeners` to ensure manager is fully initialized before setting up listeners
+- Fixed race condition where `connected` event was being emitted before `onInit` listeners were registered
+- Enhanced all listener methods (onEvent, onCreate, onUpdate, onDelete, onError) to wait for manager readiness
+- Improved `onInit` reliability by ensuring callback is triggered with all existing data once manager is ready
+- Better timing control prevents missing initialization events during app startup
+
+### Enhanced
+⚡ **Listener Reliability**: Improved event listener setup and management
+- All listeners now wait for SynqManager to be fully ready before registration
+- Eliminated timing-dependent failures in event subscription
+- More robust initialization flow ensures consistent callback behavior
+- Better separation of concerns between manager initialization and listener setup
+
+
 ## [1.0.15]
 
 ### Fixed
