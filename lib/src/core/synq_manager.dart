@@ -55,7 +55,6 @@ class SynqManager<T extends DocumentSerializable> {
     SyncConfig? config,
     FromJsonFunction<T>? fromJson,
     ToJsonFunction<T>? toJson,
-    String? userId,
   }) async {
     final key = '${instanceName}_$T';
 

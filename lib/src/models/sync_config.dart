@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 import 'package:synq_manager/src/events/event_types.dart';
+import 'package:synq_manager/src/models/conflict_resolution.dart';
 
 /// Configuration for synchronization operations
 @immutable
@@ -18,12 +19,14 @@ class SyncConfig {
     this.maxStorageSize = 100,
     this.compressionEnabled = true,
     this.customHeaders = const {},
+    this.conflictResolutionCallback,
   });
 
   /// Creates a high-priority configuration
   factory SyncConfig.highPriority({
     String? encryptionKey,
     Map<String, String> customHeaders = const {},
+    ConflictResolutionCallback? conflictResolutionCallback,
   }) {
     return SyncConfig(
       syncInterval: const Duration(minutes: 1),
@@ -32,6 +35,7 @@ class SyncConfig {
       priority: SyncPriority.high,
       encryptionKey: encryptionKey,
       customHeaders: customHeaders,
+      conflictResolutionCallback: conflictResolutionCallback,
     );
   }
 
@@ -39,6 +43,7 @@ class SyncConfig {
   factory SyncConfig.lowPriority({
     String? encryptionKey,
     Map<String, String> customHeaders = const {},
+    ConflictResolutionCallback? conflictResolutionCallback,
   }) {
     return SyncConfig(
       syncInterval: const Duration(hours: 1),
@@ -47,6 +52,7 @@ class SyncConfig {
       priority: SyncPriority.low,
       encryptionKey: encryptionKey,
       customHeaders: customHeaders,
+      conflictResolutionCallback: conflictResolutionCallback,
     );
   }
 
@@ -54,6 +60,7 @@ class SyncConfig {
   factory SyncConfig.mobile({
     String? encryptionKey,
     Map<String, String> customHeaders = const {},
+    ConflictResolutionCallback? conflictResolutionCallback,
   }) {
     return SyncConfig(
       syncInterval: const Duration(minutes: 15),
@@ -62,6 +69,7 @@ class SyncConfig {
       maxStorageSize: 50,
       encryptionKey: encryptionKey,
       customHeaders: customHeaders,
+      conflictResolutionCallback: conflictResolutionCallback,
     );
   }
 
@@ -125,6 +133,9 @@ class SyncConfig {
   /// Custom headers to include with sync requests
   final Map<String, String> customHeaders;
 
+  /// Callback for handling conflicts (user account and data conflicts)
+  final ConflictResolutionCallback? conflictResolutionCallback;
+
   /// Creates a copy with updated values
   SyncConfig copyWith({
     Duration? syncInterval,
@@ -139,6 +150,7 @@ class SyncConfig {
     int? maxStorageSize,
     bool? compressionEnabled,
     Map<String, String>? customHeaders,
+    ConflictResolutionCallback? conflictResolutionCallback,
   }) {
     return SyncConfig(
       syncInterval: syncInterval ?? this.syncInterval,
@@ -154,6 +166,8 @@ class SyncConfig {
       maxStorageSize: maxStorageSize ?? this.maxStorageSize,
       compressionEnabled: compressionEnabled ?? this.compressionEnabled,
       customHeaders: customHeaders ?? this.customHeaders,
+      conflictResolutionCallback:
+          conflictResolutionCallback ?? this.conflictResolutionCallback,
     );
   }
 

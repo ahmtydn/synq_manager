@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:math';
+import 'dart:math' as math;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive_plus_secure/hive_plus_secure.dart';
+import 'package:meta/meta.dart';
 import 'package:synq_manager/src/events/event_types.dart';
 import 'package:synq_manager/src/models/conflict_resolution.dart';
 import 'package:synq_manager/src/models/sync_config.dart';
@@ -11,19 +12,8 @@ import 'package:synq_manager/src/models/sync_event.dart';
 import 'package:synq_manager/src/services/storage_service.dart';
 import 'package:workmanager/workmanager.dart';
 
-/// Function signature for cloud synchronization operations
-typedef CloudSyncFunction<T> = Future<SyncResult<T>> Function(
-  Map<String, SyncData<T>> localChanges,
-  Map<String, String> headers,
-);
-
-/// Function signature for fetching remote data
-typedef CloudFetchFunction<T> = Future<Map<String, SyncData<T>>> Function(
-  int lastSyncTimestamp,
-  Map<String, String> headers,
-);
-
-/// Result of a synchronization operation
+/// Result of a cloud synchronization operation containing synced data and conflicts.
+@immutable
 class SyncResult<T> {
   const SyncResult({
     required this.success,
@@ -33,23 +23,91 @@ class SyncResult<T> {
     this.metadata = const {},
   });
 
-  /// Whether the sync operation was successful
   final bool success;
-
-  /// Data received from remote source
   final Map<String, SyncData<T>> remoteData;
-
-  /// Conflicts detected during sync
   final List<DataConflict<T>> conflicts;
-
-  /// Error information if sync failed
   final Object? error;
-
-  /// Additional metadata about the sync operation
   final Map<String, dynamic> metadata;
+
+  bool get hasConflicts => conflicts.isNotEmpty;
+  bool get hasError => error != null;
 }
 
-/// Service for handling cloud synchronization
+/// Response from a cloud fetch operation including user identity information.
+@immutable
+class CloudFetchResponse<T> {
+  const CloudFetchResponse({
+    required this.data,
+    this.cloudUserId,
+    this.metadata = const {},
+  });
+
+  final Map<String, SyncData<T>> data;
+  final String? cloudUserId;
+  final Map<String, dynamic> metadata;
+
+  bool get hasData => data.isNotEmpty;
+  bool get hasUserId => cloudUserId != null;
+}
+
+/// Function signature for pushing local changes to cloud storage.
+typedef CloudSyncFunction<T> = Future<SyncResult<T>> Function(
+  Map<String, SyncData<T>> localChanges,
+  Map<String, String> headers,
+);
+
+/// Function signature for fetching remote changes from cloud storage.
+typedef CloudFetchFunction<T> = Future<CloudFetchResponse<T>> Function(
+  int lastSyncTimestamp,
+  Map<String, String> headers,
+);
+
+/// Comprehensive statistics about the current sync state.
+@immutable
+class SyncStats {
+  const SyncStats({
+    required this.lastSyncTimestamp,
+    required this.pendingChangesCount,
+    required this.activeConflictsCount,
+    required this.connectivityStatus,
+    required this.isSyncing,
+  });
+
+  final int lastSyncTimestamp;
+  final int pendingChangesCount;
+  final int activeConflictsCount;
+  final ConnectivityStatus connectivityStatus;
+  final bool isSyncing;
+
+  Duration get timeSinceLastSync {
+    if (lastSyncTimestamp == 0) return Duration.zero;
+    return Duration(
+      milliseconds: DateTime.now().millisecondsSinceEpoch - lastSyncTimestamp,
+    );
+  }
+
+  bool get hasNeverSynced => lastSyncTimestamp == 0;
+  bool get hasPendingChanges => pendingChangesCount > 0;
+  bool get hasConflicts => activeConflictsCount > 0;
+  bool get isOnline => connectivityStatus == ConnectivityStatus.online;
+
+  @override
+  String toString() => 'SyncStats('
+      'lastSync: ${DateTime.fromMillisecondsSinceEpoch(lastSyncTimestamp)}, '
+      'pending: $pendingChangesCount, '
+      'conflicts: $activeConflictsCount, '
+      'status: $connectivityStatus, '
+      'syncing: $isSyncing)';
+}
+
+/// Orchestrates synchronization between local storage and cloud backend.
+///
+/// This service handles:
+/// - Bidirectional sync with conflict detection and resolution
+/// - Automatic retry with exponential backoff
+/// - Network connectivity monitoring
+/// - Background sync scheduling
+/// - User account migration scenarios
 class SyncService<T extends DocumentSerializable> {
   SyncService._({
     required this.storageService,
@@ -58,50 +116,44 @@ class SyncService<T extends DocumentSerializable> {
     required this.cloudFetchFunction,
   });
 
-  /// Storage service for local data
   final StorageService<T> storageService;
-
-  /// Synchronization configuration
   final SyncConfig config;
-
-  /// Function for pushing data to cloud
   final CloudSyncFunction<T> cloudSyncFunction;
-
-  /// Function for fetching data from cloud
   final CloudFetchFunction<T> cloudFetchFunction;
 
-  /// Stream controller for sync events
-  final StreamController<SynqEvent<T>> _eventController =
-      StreamController<SynqEvent<T>>.broadcast();
+  // Event broadcasting
+  final _eventController = StreamController<SynqEvent<T>>.broadcast();
+  Stream<SynqEvent<T>> get events => _eventController.stream;
 
-  /// Connectivity subscription
+  // Connectivity monitoring
   StreamSubscription<ConnectivityResult>? _connectivitySubscription;
-
-  /// Background sync timer
-  Timer? _syncTimer;
-
-  /// Current connectivity status
   ConnectivityStatus _connectivityStatus = ConnectivityStatus.unknown;
+  ConnectivityStatus get connectivityStatus => _connectivityStatus;
 
-  /// Last successful sync timestamp
-  int _lastSyncTimestamp = 0;
-
-  /// Whether sync is currently in progress
+  // Sync state management
+  Timer? _syncTimer;
   bool _isSyncing = false;
+  bool _isDisposed = false;
+  bool get isSyncing => _isSyncing;
 
-  /// Pending changes queue
-  final List<String> _pendingChanges = [];
+  // Change tracking
+  final _pendingChanges = <String>{};
+  int get pendingChangesCount => _pendingChanges.length;
 
-  /// Active conflicts that need resolution
-  final Map<String, DataConflict<T>> _activeConflicts = {};
+  // Conflict tracking
+  final _activeConflicts = <String, DataConflict<T>>{};
+  Map<String, DataConflict<T>> get activeConflicts =>
+      Map.unmodifiable(_activeConflicts);
 
-  /// Storage key for sync metadata
-  static const String _syncMetadataKey = '__sync_metadata__';
+  // Persistent metadata storage
+  Box<String>? _metadataBox;
+  static const _syncTimestampKey = '__sync_timestamp__';
+  static const _userIdKey = '__user_id__';
 
-  /// Box for storing sync metadata
-  Box<int>? _metadataBox;
+  int get lastSyncTimestamp => _getTimestamp();
+  String? get _storedUserId => _metadataBox?.get(_userIdKey);
 
-  /// Creates a new sync service instance
+  /// Creates and initializes a new sync service instance.
   static Future<SyncService<T>> create<T extends DocumentSerializable>({
     required StorageService<T> storageService,
     required SyncConfig config,
@@ -119,70 +171,62 @@ class SyncService<T extends DocumentSerializable> {
     return service;
   }
 
-  /// Initializes the sync service
+  /// Initializes all service components in a controlled sequence.
   Future<void> _initialize() async {
     try {
-      // Initialize metadata storage
-      await _initializeMetadataStorage();
+      await _initializeMetadataBox();
+      _startConnectivityMonitoring();
+      _startStorageMonitoring();
+      _scheduleSyncTimer();
 
-      // Load last sync timestamp
-      await _loadLastSyncTimestamp();
-
-      // Set up connectivity monitoring
-      _setupConnectivityMonitoring();
-
-      // Set up storage event monitoring
-      _setupStorageEventMonitoring();
-
-      // Register background sync if enabled
       if (config.enableBackgroundSync) {
         await _registerBackgroundSync();
       }
 
-      // Set up periodic sync timer
-      _setupSyncTimer();
-
-      _eventController.add(SynqEvent<T>.connected());
-    } catch (error) {
-      _eventController.add(
-        SynqEvent<T>.syncError(
-          key: '__sync_init__',
-          error: error,
-        ),
-      );
+      _emitEvent(SynqEvent<T>.connected());
+    } catch (error, stackTrace) {
+      _emitError('initialization', error, stackTrace);
       rethrow;
     }
   }
 
-  /// Sets up connectivity monitoring
-  void _setupConnectivityMonitoring() {
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
-      (ConnectivityResult result) {
-        final previousStatus = _connectivityStatus;
-        _connectivityStatus = _mapConnectivityResult(result);
-
-        if (previousStatus == ConnectivityStatus.offline &&
-            _connectivityStatus == ConnectivityStatus.online) {
-          // Connection restored, trigger sync
-          _eventController.add(SynqEvent<T>.connected());
-          unawaited(_performSync());
-        } else if (_connectivityStatus == ConnectivityStatus.offline) {
-          _eventController.add(SynqEvent<T>.disconnected());
-        }
-      },
-      onError: (Object error) {
-        _eventController.add(
-          SynqEvent<T>.syncError(
-            key: '__connectivity__',
-            error: error,
-          ),
-        );
-      },
+  /// Opens the metadata box for storing sync timestamps and user IDs.
+  Future<void> _initializeMetadataBox() async {
+    final boxName = '${storageService.boxName}_sync_metadata';
+    _metadataBox = Hive.box<String>(
+      name: boxName,
+      encryptionKey: config.encryptionKey,
     );
   }
 
-  /// Maps connectivity result to our status enum
-  ConnectivityStatus _mapConnectivityResult(ConnectivityResult result) {
+  /// Starts monitoring network connectivity changes.
+  void _startConnectivityMonitoring() {
+    _connectivitySubscription = Connectivity()
+        .onConnectivityChanged
+        .listen(_handleConnectivityChange, onError: _handleConnectivityError);
+  }
+
+  /// Handles changes in network connectivity.
+  void _handleConnectivityChange(ConnectivityResult result) {
+    final previousStatus = _connectivityStatus;
+    _connectivityStatus = _mapConnectivity(result);
+
+    if (_hasConnectivityRestored(previousStatus)) {
+      _emitEvent(SynqEvent<T>.connected());
+      _triggerSync();
+    } else if (_connectivityStatus == ConnectivityStatus.offline) {
+      _emitEvent(SynqEvent<T>.disconnected());
+    }
+  }
+
+  /// Determines if connectivity was restored.
+  bool _hasConnectivityRestored(ConnectivityStatus previous) {
+    return previous == ConnectivityStatus.offline &&
+        _connectivityStatus == ConnectivityStatus.online;
+  }
+
+  /// Maps connectivity result to internal status enum.
+  ConnectivityStatus _mapConnectivity(ConnectivityResult result) {
     switch (result) {
       case ConnectivityResult.wifi:
       case ConnectivityResult.mobile:
@@ -195,114 +239,78 @@ class SyncService<T extends DocumentSerializable> {
     }
   }
 
-  /// Sets up storage event monitoring
-  void _setupStorageEventMonitoring() {
-    storageService.events.listen(
-      (SynqEvent<T> event) {
-        // Forward storage events
-        _eventController.add(event);
+  /// Handles connectivity monitoring errors.
+  void _handleConnectivityError(Object error, StackTrace stackTrace) {
+    _emitError('connectivity_monitoring', error, stackTrace);
+  }
 
-        // Track changes for sync
-        if (event.type == SynqEventType.create ||
-            event.type == SynqEventType.update ||
-            event.type == SynqEventType.delete) {
-          _trackChange(event.key);
-        }
-      },
-      onError: (Object error) {
-        _eventController.add(
-          SynqEvent<T>.syncError(
-            key: '__storage_events__',
-            error: error,
-          ),
-        );
-      },
+  /// Starts monitoring storage events for change tracking.
+  void _startStorageMonitoring() {
+    storageService.events.listen(
+      _handleStorageEvent,
+      onError: (error, stackTrace) =>
+          _emitError('storage_monitoring', error, stackTrace),
     );
   }
 
-  /// Initializes metadata storage for sync timestamps
-  Future<void> _initializeMetadataStorage() async {
-    try {
-      // Open a dedicated box for sync metadata using HivePlusSecure API
-      final metadataBoxName = '${storageService.boxName}_sync_metadata';
-      _metadataBox = Hive.box<int>(
-        name: metadataBoxName,
-        encryptionKey: config.encryptionKey,
-      );
-    } catch (error) {
-      _eventController.add(
-        SynqEvent<T>.syncError(
-          key: '__metadata_storage_init__',
-          error: error,
-        ),
-      );
-      rethrow;
+  /// Handles storage events and tracks changes for sync.
+  void _handleStorageEvent(SynqEvent<T> event) {
+    _eventController.add(event);
+
+    if (_isChangeEvent(event)) {
+      _trackChange(event.key);
     }
   }
 
-  /// Loads last sync timestamp from persistent storage
-  Future<void> _loadLastSyncTimestamp() async {
-    try {
-      _lastSyncTimestamp = _metadataBox?.get(_syncMetadataKey) ?? 0;
-    } catch (error) {
-      _eventController.add(
-        SynqEvent<T>.syncError(
-          key: '__load_sync_timestamp__',
-          error: error,
-        ),
-      );
-      // Continue with default value (0) if loading fails
-      _lastSyncTimestamp = 0;
-    }
+  /// Determines if an event represents a data change.
+  bool _isChangeEvent(SynqEvent<T> event) {
+    return event.type == SynqEventType.create ||
+        event.type == SynqEventType.update ||
+        event.type == SynqEventType.delete;
   }
 
-  /// Saves last sync timestamp to persistent storage
-  Future<void> _saveLastSyncTimestamp() async {
-    try {
-      _metadataBox?.put(_syncMetadataKey, _lastSyncTimestamp);
-    } catch (error) {
-      _eventController.add(
-        SynqEvent<T>.syncError(
-          key: '__save_sync_timestamp__',
-          error: error,
-        ),
-      );
-      // Don't rethrow - sync should continue even if timestamp save fails
-    }
-  }
-
-  /// Tracks a change for synchronization
+  /// Tracks a key for synchronization and triggers immediate sync if needed.
   void _trackChange(String key) {
-    if (!_pendingChanges.contains(key)) {
-      _pendingChanges.add(key);
-    }
+    _pendingChanges.add(key);
 
-    // Trigger immediate sync for high priority changes
-    if (config.priority == SyncPriority.high ||
-        config.priority == SyncPriority.critical) {
-      unawaited(_performSync());
+    if (_shouldSyncImmediately()) {
+      _triggerSync();
     }
   }
 
-  /// Sets up periodic sync timer
-  void _setupSyncTimer() {
+  /// Determines if changes should trigger immediate sync.
+  bool _shouldSyncImmediately() {
+    return config.priority == SyncPriority.high ||
+        config.priority == SyncPriority.critical;
+  }
+
+  /// Schedules periodic sync operations.
+  void _scheduleSyncTimer() {
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(config.syncInterval, (_) {
-      if (_connectivityStatus == ConnectivityStatus.online && !_isSyncing) {
-        unawaited(_performSync());
+      if (_canSync()) {
+        _triggerSync();
       }
     });
   }
 
-  /// Registers background sync with WorkManager
+  /// Checks if sync can be performed.
+  bool _canSync() {
+    return _connectivityStatus == ConnectivityStatus.online && !_isSyncing;
+  }
+
+  /// Triggers a sync operation asynchronously without awaiting.
+  void _triggerSync() {
+    unawaited(_performSync());
+  }
+
+  /// Registers background sync with WorkManager.
   Future<void> _registerBackgroundSync() async {
     try {
-      await Workmanager().initialize(
-        _callbackDispatcher,
-      );
+      await Workmanager().initialize(_callbackDispatcher);
 
       await Workmanager().registerPeriodicTask(
-        'sync_task_${storageService.boxName}',
+        'sync_${storageService.boxName}',
         'syncTask',
         frequency: config.syncInterval,
         constraints: Constraints(
@@ -315,449 +323,535 @@ class SyncService<T extends DocumentSerializable> {
           'encryptionKey': config.encryptionKey,
         },
       );
-    } catch (error) {
-      _eventController.add(
-        SynqEvent<T>.syncError(
-          key: '__background_sync_register__',
-          error: error,
-        ),
-      );
+    } catch (error, stackTrace) {
+      _emitError('background_sync_registration', error, stackTrace);
     }
   }
 
-  /// Stream of sync events
-  Stream<SynqEvent<T>> get events => _eventController.stream;
+  /// Manually triggers a synchronization operation.
+  Future<void> sync() => _performSync();
 
-  /// Current connectivity status
-  ConnectivityStatus get connectivityStatus => _connectivityStatus;
+  /// Forces synchronization of specific keys.
+  Future<void> syncKeys(List<String> keys) async {
+    if (_isSyncing) return;
 
-  /// Whether sync is currently in progress
-  bool get isSyncing => _isSyncing;
-
-  /// Number of pending changes
-  int get pendingChangesCount => _pendingChanges.length;
-
-  /// Active conflicts that need resolution
-  Map<String, DataConflict<T>> get activeConflicts =>
-      Map.unmodifiable(_activeConflicts);
-
-  /// Last sync timestamp
-  int get lastSyncTimestamp => _lastSyncTimestamp;
-
-  /// Manually triggers a synchronization
-  Future<void> sync() async {
+    _pendingChanges.addAll(keys);
     await _performSync();
   }
 
-  /// Performs the actual synchronization
+  /// Performs the complete synchronization workflow.
   Future<void> _performSync() async {
-    if (_isSyncing) return;
-    if (_connectivityStatus != ConnectivityStatus.online) return;
+    if (!_canPerformSync()) return;
 
     _isSyncing = true;
-    _eventController.add(SynqEvent<T>.syncStart(key: '__sync__'));
+    _emitEvent(SynqEvent<T>.syncStart(key: '__sync__'));
 
     try {
-      // Handle first-time sync differently
-      if (_lastSyncTimestamp == 0) {
-        await _performInitialSync();
-      } else {
-        await _performIncrementalSync();
-      }
-
-      _lastSyncTimestamp = DateTime.now().millisecondsSinceEpoch;
-      await _saveLastSyncTimestamp();
-      _eventController.add(SynqEvent<T>.syncComplete(key: '__sync__'));
-    } catch (error) {
-      _eventController.add(
-        SynqEvent<T>.syncError(
-          key: '__sync__',
-          error: error,
-        ),
-      );
-
-      if (config.enableAutoRetry) {
-        await _scheduleRetry();
-      }
+      await _executeSync();
+      await _persistSyncTimestamp();
+      _emitEvent(SynqEvent<T>.syncComplete(key: '__sync__'));
+    } catch (error, stackTrace) {
+      _handleSyncError(error, stackTrace);
     } finally {
       _isSyncing = false;
     }
   }
 
-  /// Performs initial sync when no previous sync exists
+  /// Checks if sync can proceed.
+  bool _canPerformSync() {
+    return !_isSyncing &&
+        !_isDisposed &&
+        _connectivityStatus == ConnectivityStatus.online;
+  }
+
+  /// Executes the appropriate sync strategy based on sync history.
+  Future<void> _executeSync() async {
+    if (_getTimestamp() == 0) {
+      await _performInitialSync();
+    } else {
+      await _performIncrementalSync();
+    }
+  }
+
+  /// Handles sync errors and schedules retry if enabled.
+  void _handleSyncError(Object error, StackTrace stackTrace) {
+    _emitError('sync', error, stackTrace);
+
+    if (config.enableAutoRetry) {
+      _scheduleRetry();
+    }
+  }
+
+  /// Performs initial synchronization for first-time sync.
+  ///
+  /// Strategy:
+  /// 1. Fetch all remote data
+  /// 2. Get all local data
+  /// 3. Detect conflicts between local and remote
+  /// 4. Push non-conflicted local data
+  /// 5. Apply non-conflicted remote data
+  /// 6. Handle conflicts according to strategy
   Future<void> _performInitialSync() async {
-    // Step 1: Get all local data for initial sync
-    final allLocalData = await storageService.getAll();
+    final remoteResponse = await _fetchFromCloud();
+    final localData = await storageService.getAll();
 
-    // Step 2: Fetch all remote data
-    final remoteData = await _fetchRemoteUpdates();
+    final conflicts = _detectConflicts(localData, remoteResponse.data);
+    final cleanLocal = _removeConflicts(localData, conflicts);
 
-    // Step 3: Detect conflicts
-    final conflicts = await _detectConflicts(allLocalData, remoteData);
-
-    // Step 4: Push non-conflicted local data
-    final cleanLocalChanges = _removeConflictedItems(allLocalData, conflicts);
-    if (cleanLocalChanges.isNotEmpty) {
-      await _pushLocalChanges(cleanLocalChanges);
+    if (cleanLocal.isNotEmpty) {
+      await _pushToCloud(cleanLocal);
     }
 
-    // Step 5: Apply non-conflicted remote data
-    await _processRemoteData(remoteData, conflicts);
+    await _applyRemoteChanges(remoteResponse.data, conflicts);
+    await _resolveConflicts(conflicts);
 
-    // Step 6: Handle conflicts
-    await _handleConflicts(conflicts);
-
-    // Step 7: Clear all pending changes (initial sync complete)
     _pendingChanges.clear();
   }
 
-  /// Performs incremental sync with only changed data
+  /// Performs incremental synchronization for subsequent syncs.
+  ///
+  /// Strategy:
+  /// 1. Fetch remote changes since last sync
+  /// 2. Get local changes since last sync
+  /// 3. Detect conflicts
+  /// 4. Push non-conflicted local changes
+  /// 5. Apply non-conflicted remote changes
+  /// 6. Handle conflicts
   Future<void> _performIncrementalSync() async {
-    // Step 1: Always fetch remote updates first to detect conflicts
-    final remoteData = await _fetchRemoteUpdates();
+    final remoteResponse = await _fetchFromCloud();
+    final localChanges = await _gatherPendingChanges();
 
-    // Step 2: Get pending local changes
-    final localChanges = await _getPendingChanges();
+    final conflicts = _detectConflicts(localChanges, remoteResponse.data);
 
-    // Step 3: Detect conflicts between local and remote data
-    final conflicts = await _detectConflicts(localChanges, remoteData);
-
-    // Step 4: If we have local changes, push them to remote
     if (localChanges.isNotEmpty) {
-      // Remove conflicted items from local changes for now
-      final cleanLocalChanges = _removeConflictedItems(localChanges, conflicts);
-
-      if (cleanLocalChanges.isNotEmpty) {
-        await _pushLocalChanges(cleanLocalChanges);
+      final cleanLocal = _removeConflicts(localChanges, conflicts);
+      if (cleanLocal.isNotEmpty) {
+        await _pushToCloud(cleanLocal);
       }
     }
 
-    // Step 5: Apply remote changes (non-conflicted ones)
-    await _processRemoteData(remoteData, conflicts);
+    await _applyRemoteChanges(remoteResponse.data, conflicts);
+    await _resolveConflicts(conflicts);
 
-    // Step 6: Handle conflicts
-    await _handleConflicts(conflicts);
-
-    // Step 7: Clear pending changes for non-conflicted items
     _clearProcessedChanges(localChanges, conflicts);
   }
 
-  /// Gets pending changes from storage
-  Future<Map<String, SyncData<T>>> _getPendingChanges() async {
+  /// Gathers all pending local changes for synchronization.
+  Future<Map<String, SyncData<T>>> _gatherPendingChanges() async {
     final changes = <String, SyncData<T>>{};
 
-    // First, get explicitly tracked pending changes
-    for (final key in List<String>.from(_pendingChanges)) {
+    // First pass: explicitly tracked changes
+    await _collectTrackedChanges(changes);
+
+    // Second pass: scan for untracked changes if nothing tracked
+    if (changes.isEmpty) {
+      await _scanForUntrackedChanges(changes);
+    }
+
+    return changes;
+  }
+
+  /// Collects explicitly tracked pending changes.
+  Future<void> _collectTrackedChanges(Map<String, SyncData<T>> changes) async {
+    final keysToRemove = <String>[];
+
+    for (final key in _pendingChanges) {
       final data = await storageService.get(key);
       if (data != null) {
         changes[key] = data;
       } else {
-        _pendingChanges.remove(key);
+        keysToRemove.add(key);
       }
     }
-    if (changes.isEmpty) {
-      final allData = await storageService.getAll();
-      for (final entry in allData.entries) {
-        final key = entry.key;
-        final data = entry.value;
-        if (_lastSyncTimestamp > 0 && data.timestamp > _lastSyncTimestamp) {
-          changes[key] = data;
-          if (!_pendingChanges.contains(key)) {
-            _pendingChanges.add(key);
-          }
-        }
-      }
-    }
-    return changes;
+
+    _pendingChanges.removeAll(keysToRemove);
   }
 
-  /// Fetches remote updates and returns the data
-  Future<Map<String, SyncData<T>>> _fetchRemoteUpdates() async {
-    _eventController.add(SynqEvent<T>.cloudFetchStart(key: '__cloud_fetch__'));
+  /// Scans storage for changes newer than last sync timestamp.
+  Future<void> _scanForUntrackedChanges(
+      Map<String, SyncData<T>> changes) async {
+    if (_getTimestamp() == 0) return;
+
+    final allData = await storageService.getAll();
+    final threshold = _getTimestamp();
+
+    for (final entry in allData.entries) {
+      if (entry.value.timestamp > threshold) {
+        changes[entry.key] = entry.value;
+        _pendingChanges.add(entry.key);
+      }
+    }
+  }
+
+  /// Fetches remote updates from cloud storage.
+  Future<CloudFetchResponse<T>> _fetchFromCloud() async {
+    _emitEvent(SynqEvent<T>.cloudFetchStart(key: '__cloud_fetch__'));
 
     try {
-      final remoteData = await cloudFetchFunction(
-        _lastSyncTimestamp,
+      final response = await cloudFetchFunction(
+        _getTimestamp(),
         config.customHeaders,
       );
 
-      _eventController.add(
-        SynqEvent<T>.cloudFetchSuccess(
-          key: '__cloud_fetch__',
-          metadata: {'remoteDataCount': remoteData.length},
-        ),
-      );
+      _emitCloudFetchSuccess(response);
+      await _handleUserAccountMigration(response);
 
-      return remoteData;
-    } catch (error) {
-      _eventController.add(
-        SynqEvent<T>.cloudFetchError(
-          key: '__cloud_fetch__',
-          error: error,
-          metadata: const {'operation': 'cloudFetchFunction'},
-        ),
-      );
+      return response;
+    } catch (error, stackTrace) {
+      _emitCloudFetchError(error, stackTrace);
       rethrow;
     }
   }
 
-  /// Detects conflicts between local and remote data
-  Future<List<DataConflict<T>>> _detectConflicts(
-    Map<String, SyncData<T>> localChanges,
-    Map<String, SyncData<T>> remoteData,
+  /// Emits cloud fetch success event with metadata.
+  void _emitCloudFetchSuccess(CloudFetchResponse<T> response) {
+    _emitEvent(SynqEvent<T>.cloudFetchSuccess(
+      key: '__cloud_fetch__',
+      metadata: {
+        'remoteDataCount': response.data.length,
+        'cloudUserId': response.cloudUserId,
+        'cloudMetadata': response.metadata,
+      },
+    ));
+  }
+
+  /// Emits cloud fetch error event.
+  void _emitCloudFetchError(Object error, StackTrace stackTrace) {
+    _emitEvent(SynqEvent<T>.cloudFetchError(
+      key: '__cloud_fetch__',
+      error: error,
+      metadata: {'operation': 'cloudFetchFunction'},
+    ));
+  }
+
+  /// Handles user account migration scenarios.
+  ///
+  /// Scenarios handled:
+  /// 1. Guest user signs in → Accept cloud data
+  /// 2. User creates data offline → Push to cloud
+  /// 3. User switches accounts → Ask user preference
+  /// 4. Same user continues → Normal sync
+  Future<void> _handleUserAccountMigration(
+      CloudFetchResponse<T> response) async {
+    final scenario = await _analyzeAccountScenario(response);
+
+    switch (scenario) {
+      case _AccountScenario.guestSignIn:
+        await _acceptCloudData(response);
+        break;
+
+      case _AccountScenario.offlineDataUpload:
+        await _uploadLocalData();
+        break;
+
+      case _AccountScenario.accountSwitch:
+        await _resolveAccountConflict(response);
+        break;
+
+      case _AccountScenario.normalSync:
+        // Continue with normal sync
+        break;
+    }
+  }
+
+  /// Analyzes the account migration scenario.
+  Future<_AccountScenario> _analyzeAccountScenario(
+    CloudFetchResponse<T> response,
   ) async {
+    final hasLocal = (await storageService.getAll()).isNotEmpty;
+    final hasCloud = response.hasData;
+    final cloudUserId = response.cloudUserId;
+
+    // No stored user, no local data, cloud has user and data
+    if (_storedUserId == null && !hasLocal && cloudUserId != null && hasCloud) {
+      return _AccountScenario.guestSignIn;
+    }
+
+    // No stored user, has local data, no cloud data
+    if (_storedUserId == null && hasLocal && !hasCloud) {
+      return _AccountScenario.offlineDataUpload;
+    }
+
+    // Different users with data on both sides
+    if (_storedUserId != null &&
+        cloudUserId != null &&
+        _storedUserId != cloudUserId &&
+        hasLocal &&
+        hasCloud) {
+      return _AccountScenario.accountSwitch;
+    }
+
+    // Has stored user, has local data, different cloud user, no cloud data
+    if (_storedUserId != null &&
+        hasLocal &&
+        cloudUserId != null &&
+        _storedUserId != cloudUserId &&
+        !hasCloud) {
+      return _AccountScenario.offlineDataUpload;
+    }
+
+    return _AccountScenario.normalSync;
+  }
+
+  /// Accepts cloud data and discards local data (guest sign-in scenario).
+  Future<void> _acceptCloudData(CloudFetchResponse<T> response) async {
+    await storageService.clear();
+    await _persistUserId(response.cloudUserId);
+
+    for (final entry in response.data.entries) {
+      if (!entry.value.deleted && entry.value.value != null) {
+        await storageService.put(
+          entry.key,
+          entry.value.value!,
+          metadata: entry.value.metadata,
+        );
+      }
+    }
+  }
+
+  /// Uploads all local data to cloud (offline data upload scenario).
+  Future<void> _uploadLocalData() async {
+    final allLocal = await storageService.getAll();
+    if (allLocal.isNotEmpty) {
+      await _pushToCloud(allLocal);
+    }
+  }
+
+  /// Resolves account conflict by asking user preference.
+  Future<void> _resolveAccountConflict(CloudFetchResponse<T> response) async {
+    if (config.conflictResolutionCallback == null) {
+      throw StateError(
+        'Account conflict detected but no resolution callback provided',
+      );
+    }
+
+    final context = ConflictContext<T>(
+      type: ConflictType.userAccount,
+      key: '__user_account__',
+      localUserId: _storedUserId,
+      cloudUserId: response.cloudUserId,
+      hasLocalData: (await storageService.getAll()).isNotEmpty,
+      hasCloudData: response.hasData,
+    );
+
+    final action = await config.conflictResolutionCallback!(context);
+    await _applyAccountAction(action, response);
+  }
+
+  /// Applies user's choice for account conflict resolution.
+  Future<void> _applyAccountAction(
+    ConflictAction action,
+    CloudFetchResponse<T> response,
+  ) async {
+    switch (action) {
+      case ConflictAction.useCloudData:
+        await _acceptCloudData(response);
+        break;
+
+      case ConflictAction.keepLocalData:
+        await _uploadLocalData();
+        break;
+
+      case ConflictAction.cancel:
+        throw StateError('User cancelled sync due to account conflict');
+
+      default:
+        throw ArgumentError('Invalid action for account conflict: $action');
+    }
+  }
+
+  /// Detects conflicts between local and remote data.
+  List<DataConflict<T>> _detectConflicts(
+    Map<String, SyncData<T>> localData,
+    Map<String, SyncData<T>> remoteData,
+  ) {
     final conflicts = <DataConflict<T>>[];
 
-    for (final entry in localChanges.entries) {
+    for (final entry in localData.entries) {
       final key = entry.key;
-      final localItem = entry.value;
-      final remoteItem = remoteData[key];
+      final local = entry.value;
+      final remote = remoteData[key];
 
-      if (remoteItem != null) {
-        // Both local and remote have changes
-        if (localItem.version != remoteItem.version &&
-            localItem.timestamp != remoteItem.timestamp) {
-          // Version or timestamp mismatch indicates conflict
-          conflicts.add(
-            DataConflict<T>(
-              key: key,
-              localData: localItem,
-              remoteData: remoteItem,
-              strategy: ConflictResolutionStrategy.manual,
-            ),
-          );
-        }
+      if (remote != null && _hasVersionConflict(local, remote)) {
+        conflicts.add(DataConflict<T>(
+          key: key,
+          localData: local,
+          remoteData: remote,
+          strategy: ConflictResolutionStrategy.manual,
+        ));
       }
     }
 
     return conflicts;
   }
 
-  /// Removes conflicted items from local changes map
-  Map<String, SyncData<T>> _removeConflictedItems(
-    Map<String, SyncData<T>> localChanges,
-    List<DataConflict<T>> conflicts,
-  ) {
-    final cleanChanges = Map<String, SyncData<T>>.from(localChanges);
-    for (final conflict in conflicts) {
-      cleanChanges.remove(conflict.key);
-    }
-    return cleanChanges;
+  /// Checks if two sync data items have a version conflict.
+  bool _hasVersionConflict(SyncData<T> local, SyncData<T> remote) {
+    return local.version != remote.version &&
+        local.timestamp != remote.timestamp;
   }
 
-  /// Pushes local changes to remote
-  Future<void> _pushLocalChanges(Map<String, SyncData<T>> localChanges) async {
-    _eventController.add(
-      SynqEvent<T>.cloudSyncStart(
-        key: '__cloud_sync__',
-        metadata: {'localChangesCount': localChanges.length},
-      ),
-    );
+  /// Removes conflicted items from the data map.
+  Map<String, SyncData<T>> _removeConflicts(
+    Map<String, SyncData<T>> data,
+    List<DataConflict<T>> conflicts,
+  ) {
+    final clean = Map<String, SyncData<T>>.from(data);
+    for (final conflict in conflicts) {
+      clean.remove(conflict.key);
+    }
+    return clean;
+  }
+
+  /// Pushes local changes to cloud storage.
+  Future<void> _pushToCloud(Map<String, SyncData<T>> localChanges) async {
+    _emitEvent(SynqEvent<T>.cloudSyncStart(
+      key: '__cloud_sync__',
+      metadata: {'localChangesCount': localChanges.length},
+    ));
 
     try {
       final result =
           await cloudSyncFunction(localChanges, config.customHeaders);
 
-      if (result.success) {
-        _eventController.add(
-          SynqEvent<T>.cloudSyncSuccess(
-            key: '__cloud_sync__',
-            metadata: {
-              'remoteDataCount': result.remoteData.length,
-              'syncMetadata': result.metadata,
-            },
-          ),
-        );
-      } else {
-        final error =
-            result.error ?? Exception('Sync failed without specific error');
-        _eventController.add(
-          SynqEvent<T>.cloudSyncError(
-            key: '__cloud_sync__',
-            error: error,
-            metadata: {
-              'operation': 'cloudSyncFunction',
-              'syncMetadata': result.metadata,
-            },
-          ),
-        );
+      if (!result.success) {
+        final error = result.error ?? StateError('Sync failed without error');
+        _emitCloudSyncError(error);
         throw error;
       }
+
+      _emitCloudSyncSuccess(result);
     } catch (error) {
-      _eventController.add(
-        SynqEvent<T>.cloudSyncError(
-          key: '__cloud_sync__',
-          error: error,
-          metadata: const {'operation': 'cloudSyncFunction'},
-        ),
-      );
+      _emitCloudSyncError(error);
       rethrow;
     }
   }
 
-  /// Clears processed changes from pending queue and hard deletes synced deleted items
-  void _clearProcessedChanges(
-    Map<String, SyncData<T>> localChanges,
-    List<DataConflict<T>> conflicts,
-  ) {
-    // Remove successfully processed items from pending changes
-    final conflictKeys = conflicts.map((c) => c.key).toSet();
-    final deletedKeys = <String>[];
-
-    for (final key in localChanges.keys) {
-      if (!conflictKeys.contains(key)) {
-        _pendingChanges.remove(key);
-
-        // Collect deleted items for hard deletion
-        final data = localChanges[key];
-        if (data != null && data.deleted) {
-          deletedKeys.add(key);
-        }
-      }
-    }
-
-    // Hard delete synced deleted items
-    _hardDeleteSyncedItems(deletedKeys);
+  /// Emits cloud sync success event.
+  void _emitCloudSyncSuccess(SyncResult<T> result) {
+    _emitEvent(SynqEvent<T>.cloudSyncSuccess(
+      key: '__cloud_sync__',
+      metadata: {
+        'remoteDataCount': result.remoteData.length,
+        'syncMetadata': result.metadata,
+      },
+    ));
   }
 
-  /// Hard deletes items that have been successfully synced to cloud
-  void _hardDeleteSyncedItems(List<String> deletedKeys) {
-    if (deletedKeys.isEmpty) return;
-
-    // Perform hard deletion asynchronously to avoid blocking sync
-    Future.microtask(() async {
-      for (final key in deletedKeys) {
-        try {
-          await storageService.hardDelete(key);
-        } catch (error) {
-          // Log error but don't fail the sync process
-          _eventController.add(
-            SynqEvent<T>.syncError(
-              key: key,
-              error: error,
-              metadata: {'operation': 'hardDelete'},
-            ),
-          );
-        }
-      }
-    });
+  /// Emits cloud sync error event.
+  void _emitCloudSyncError(Object error) {
+    _emitEvent(SynqEvent<T>.cloudSyncError(
+      key: '__cloud_sync__',
+      error: error,
+      metadata: {'operation': 'cloudSyncFunction'},
+    ));
   }
 
-  /// Processes remote data, excluding conflicted items
-  Future<void> _processRemoteData(
+  /// Applies non-conflicted remote changes to local storage.
+  Future<void> _applyRemoteChanges(
     Map<String, SyncData<T>> remoteData,
     List<DataConflict<T>> conflicts,
   ) async {
     final conflictKeys = conflicts.map((c) => c.key).toSet();
 
     for (final entry in remoteData.entries) {
-      final key = entry.key;
-      final remoteItem = entry.value;
+      if (conflictKeys.contains(entry.key)) continue;
 
-      // Skip conflicted items - they will be handled separately
-      if (conflictKeys.contains(key)) {
-        continue;
-      }
-
-      final localItem = await storageService.get(key);
-
-      if (localItem == null) {
-        // New item from remote
-        await storageService.put(
-          key,
-          remoteItem.value!,
-          metadata: remoteItem.metadata,
-        );
-      } else if (localItem.version < remoteItem.version) {
-        // Remote is newer
-        if (remoteItem.deleted) {
-          await storageService.delete(key);
-        } else {
-          await storageService.update(
-            key,
-            remoteItem.value!,
-            metadata: remoteItem.metadata,
-          );
-        }
-      } else if (localItem.version > remoteItem.version) {
-        // Local is newer - no action needed
-        continue;
-      } else {
-        // Same version, check timestamps
-        if (remoteItem.timestamp > localItem.timestamp) {
-          if (remoteItem.deleted) {
-            await storageService.delete(key);
-          } else {
-            await storageService.update(
-              key,
-              remoteItem.value!,
-              metadata: remoteItem.metadata,
-            );
-          }
-        }
-      }
+      await _applyRemoteItem(entry.key, entry.value);
     }
   }
 
-  /// Handles synchronization conflicts
-  Future<void> _handleConflicts(List<DataConflict<T>> conflicts) async {
+  /// Applies a single remote item to local storage.
+  Future<void> _applyRemoteItem(String key, SyncData<T> remote) async {
+    final local = await storageService.get(key);
+
+    if (local == null) {
+      await _createFromRemote(key, remote);
+    } else if (local.version < remote.version) {
+      await _updateFromRemote(key, remote);
+    } else if (local.version == remote.version &&
+        remote.timestamp > local.timestamp) {
+      await _updateFromRemote(key, remote);
+    }
+  }
+
+  /// Creates a new local item from remote data.
+  Future<void> _createFromRemote(String key, SyncData<T> remote) async {
+    if (!remote.deleted && remote.value != null) {
+      await storageService.put(
+        key,
+        remote.value!,
+        metadata: remote.metadata,
+      );
+    }
+  }
+
+  /// Updates an existing local item from remote data.
+  Future<void> _updateFromRemote(String key, SyncData<T> remote) async {
+    if (remote.deleted) {
+      await storageService.delete(key);
+    } else if (remote.value != null) {
+      await storageService.update(
+        key,
+        remote.value!,
+        metadata: remote.metadata,
+      );
+    }
+  }
+
+  /// Resolves conflicts according to configured strategy.
+  Future<void> _resolveConflicts(List<DataConflict<T>> conflicts) async {
     for (final conflict in conflicts) {
-      if (config.enableConflictResolution) {
-        try {
-          final resolution = conflict.resolve();
-
-          if (resolution.isResolved && resolution.resolvedData != null) {
-            // Apply resolved data
-            await storageService.put(
-              conflict.key,
-              resolution.resolvedData!.value!,
-              metadata: resolution.resolvedData!.metadata,
-            );
-
-            _eventController.add(
-              SynqEvent<T>(
-                type: SynqEventType.conflictResolved,
-                key: conflict.key,
-                data: resolution.resolvedData!,
-              ),
-            );
-          } else {
-            // Manual resolution required
-            _activeConflicts[conflict.key] = conflict;
-
-            _eventController.add(
-              SynqEvent<T>.conflict(
-                key: conflict.key,
-                data: conflict.localData,
-              ),
-            );
-          }
-        } catch (error) {
-          // Conflict resolution failed
-          _activeConflicts[conflict.key] = conflict;
-
-          _eventController.add(
-            SynqEvent<T>.conflict(
-              key: conflict.key,
-              data: conflict.localData,
-            ),
-          );
-        }
-      } else {
-        // Store conflict for manual resolution
-        _activeConflicts[conflict.key] = conflict;
-
-        _eventController.add(
-          SynqEvent<T>.conflict(
-            key: conflict.key,
-            data: conflict.localData,
-          ),
-        );
-      }
+      await _resolveConflict(conflict);
     }
   }
 
-  /// Manually resolves a conflict
+  /// Resolves a single conflict.
+  Future<void> _resolveConflict(DataConflict<T> conflict) async {
+    if (!config.enableConflictResolution) {
+      _storeConflictForManualResolution(conflict);
+      return;
+    }
+
+    try {
+      final resolution = conflict.resolve();
+
+      if (resolution.isResolved && resolution.resolvedData != null) {
+        await _applyResolution(conflict.key, resolution.resolvedData!);
+      } else {
+        _storeConflictForManualResolution(conflict);
+      }
+    } catch (error, stackTrace) {
+      _emitError('conflict_resolution', error, stackTrace);
+      _storeConflictForManualResolution(conflict);
+    }
+  }
+
+  /// Applies a resolved conflict to storage.
+  Future<void> _applyResolution(String key, SyncData<T> resolved) async {
+    await storageService.put(
+      key,
+      resolved.value!,
+      metadata: resolved.metadata,
+    );
+
+    _emitEvent(SynqEvent<T>(
+      type: SynqEventType.conflictResolved,
+      key: key,
+      data: resolved,
+    ));
+  }
+
+  /// Stores a conflict for manual resolution.
+  void _storeConflictForManualResolution(DataConflict<T> conflict) {
+    _activeConflicts[conflict.key] = conflict;
+    _emitEvent(SynqEvent<T>.conflict(
+      key: conflict.key,
+      data: conflict.localData,
+    ));
+  }
+
+  /// Manually resolves a conflict with a specific strategy.
   Future<void> resolveConflict(
     String key,
     ConflictResolutionStrategy strategy, {
@@ -765,90 +859,120 @@ class SyncService<T extends DocumentSerializable> {
   }) async {
     final conflict = _activeConflicts[key];
     if (conflict == null) {
-      throw ArgumentError('No active conflict found for key: $key');
+      throw ArgumentError('No active conflict for key: $key');
     }
 
-    try {
-      final updatedConflict = conflict.copyWith(
-        strategy: strategy,
-        customResolver: customResolver,
-      );
+    final updated = conflict.copyWith(
+      strategy: strategy,
+      customResolver: customResolver,
+    );
 
-      final resolution = updatedConflict.resolve();
-
-      if (resolution.isResolved && resolution.resolvedData != null) {
-        // Apply resolved data
-        await storageService.put(
-          key,
-          resolution.resolvedData!.value!,
-          metadata: resolution.resolvedData!.metadata,
-        );
-
-        // Remove from active conflicts
-        _activeConflicts.remove(key);
-
-        _eventController.add(
-          SynqEvent<T>(
-            type: SynqEventType.conflictResolved,
-            key: key,
-            data: resolution.resolvedData!,
-          ),
-        );
-      } else {
-        throw StateError('Failed to resolve conflict for key: $key');
-      }
-    } catch (error) {
-      _eventController.add(
-        SynqEvent<T>.syncError(
-          key: key,
-          error: error,
-        ),
-      );
-      rethrow;
+    final resolution = updated.resolve();
+    if (!resolution.isResolved || resolution.resolvedData == null) {
+      throw StateError('Failed to resolve conflict for key: $key');
     }
+
+    await _applyResolution(key, resolution.resolvedData!);
+    _activeConflicts.remove(key);
   }
 
-  /// Schedules a retry for failed sync operations
-  Future<void> _scheduleRetry() async {
-    for (var attempt = 1; attempt <= config.retryAttempts; attempt++) {
-      final delay = Duration(
-        milliseconds:
-            config.retryDelay.inMilliseconds * pow(2, attempt - 1).toInt(),
-      );
+  /// Clears processed changes and performs hard deletion of synced items.
+  void _clearProcessedChanges(
+    Map<String, SyncData<T>> localChanges,
+    List<DataConflict<T>> conflicts,
+  ) {
+    final conflictKeys = conflicts.map((c) => c.key).toSet();
+    final deletedKeys = <String>[];
 
-      await Future<void>.delayed(delay);
+    for (final entry in localChanges.entries) {
+      if (!conflictKeys.contains(entry.key)) {
+        _pendingChanges.remove(entry.key);
 
-      if (_connectivityStatus == ConnectivityStatus.online) {
-        try {
-          await _performSync();
-          return; // Success, no more retries needed
-        } catch (error) {
-          if (attempt == config.retryAttempts) {
-            // Final attempt failed
-            _eventController.add(
-              SynqEvent<T>.syncError(
-                key: '__retry_failed__',
-                error: error,
-              ),
-            );
-          }
+        if (entry.value.deleted) {
+          deletedKeys.add(entry.key);
         }
       }
     }
+
+    _performHardDeletion(deletedKeys);
   }
 
-  /// Forces a sync of specific keys
-  Future<void> syncKeys(List<String> keys) async {
-    if (_isSyncing) return;
+  /// Performs hard deletion of synced items asynchronously.
+  void _performHardDeletion(List<String> keys) {
+    if (keys.isEmpty) return;
 
-    _pendingChanges.addAll(keys.where((k) => !_pendingChanges.contains(k)));
-    await _performSync();
+    Future.microtask(() async {
+      for (final key in keys) {
+        try {
+          await storageService.hardDelete(key);
+        } catch (error, stackTrace) {
+          _emitError('hard_delete', error, stackTrace, key: key);
+        }
+      }
+    });
   }
 
-  /// Gets sync statistics
+  /// Schedules retry attempts with exponential backoff.
+  void _scheduleRetry() {
+    Future.microtask(() async {
+      for (var attempt = 1; attempt <= config.retryAttempts; attempt++) {
+        final delay = _calculateBackoff(attempt);
+        await Future<void>.delayed(delay);
+
+        if (!_canPerformSync()) continue;
+
+        try {
+          await _performSync();
+          return; // Success - exit retry loop
+        } catch (error, stackTrace) {
+          if (attempt == config.retryAttempts) {
+            _emitError('retry_exhausted', error, stackTrace);
+          }
+        }
+      }
+    });
+  }
+
+  /// Calculates exponential backoff delay for retry attempts.
+  Duration _calculateBackoff(int attempt) {
+    final multiplier = math.pow(2, attempt - 1).toInt();
+    return Duration(
+      milliseconds: config.retryDelay.inMilliseconds * multiplier,
+    );
+  }
+
+  /// Retrieves the last sync timestamp from persistent storage.
+  int _getTimestamp() {
+    final value = _metadataBox?.get(_syncTimestampKey);
+    return value != null ? int.tryParse(value) ?? 0 : 0;
+  }
+
+  /// Persists the current timestamp as the last successful sync time.
+  Future<void> _persistSyncTimestamp() async {
+    try {
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      _metadataBox?.put(_syncTimestampKey, timestamp.toString());
+    } catch (error, stackTrace) {
+      _emitError('persist_timestamp', error, stackTrace);
+      // Don't rethrow - sync should continue despite timestamp persistence failure
+    }
+  }
+
+  /// Persists user ID to storage.
+  Future<void> _persistUserId(String? userId) async {
+    if (userId == null) return;
+
+    try {
+      _metadataBox?.put(_userIdKey, userId);
+    } catch (error, stackTrace) {
+      _emitError('persist_user_id', error, stackTrace);
+    }
+  }
+
+  /// Returns current synchronization statistics.
   SyncStats getStats() {
     return SyncStats(
-      lastSyncTimestamp: _lastSyncTimestamp,
+      lastSyncTimestamp: _getTimestamp(),
       pendingChangesCount: _pendingChanges.length,
       activeConflictsCount: _activeConflicts.length,
       connectivityStatus: _connectivityStatus,
@@ -856,8 +980,37 @@ class SyncService<T extends DocumentSerializable> {
     );
   }
 
-  /// Closes the sync service and releases resources
+  /// Emits a sync event to listeners.
+  void _emitEvent(SynqEvent<T> event) {
+    if (!_eventController.isClosed) {
+      _eventController.add(event);
+    }
+  }
+
+  /// Emits an error event with standardized metadata.
+  void _emitError(
+    String operation,
+    Object error,
+    StackTrace stackTrace, {
+    String? key,
+  }) {
+    if (_eventController.isClosed) return;
+
+    _eventController.add(SynqEvent<T>.syncError(
+      key: key ?? '__$operation\__',
+      error: error,
+      metadata: {
+        'operation': operation,
+        'stackTrace': stackTrace.toString(),
+      },
+    ));
+  }
+
+  /// Releases all resources and cancels ongoing operations.
   Future<void> close() async {
+    if (_isDisposed) return;
+    _isDisposed = true;
+
     _syncTimer?.cancel();
     _syncTimer = null;
 
@@ -865,67 +1018,54 @@ class SyncService<T extends DocumentSerializable> {
     _connectivitySubscription = null;
 
     if (config.enableBackgroundSync) {
-      await Workmanager()
-          .cancelByUniqueName('sync_task_${storageService.boxName}');
+      await _cancelBackgroundSync();
     }
 
     _metadataBox?.close();
     await _eventController.close();
   }
-}
 
-/// Statistics about sync operations
-class SyncStats {
-  const SyncStats({
-    required this.lastSyncTimestamp,
-    required this.pendingChangesCount,
-    required this.activeConflictsCount,
-    required this.connectivityStatus,
-    required this.isSyncing,
-  });
-
-  /// Timestamp of last successful sync
-  final int lastSyncTimestamp;
-
-  /// Number of pending changes
-  final int pendingChangesCount;
-
-  /// Number of active conflicts
-  final int activeConflictsCount;
-
-  /// Current connectivity status
-  final ConnectivityStatus connectivityStatus;
-
-  /// Whether sync is currently in progress
-  final bool isSyncing;
-
-  /// Time since last sync
-  Duration get timeSinceLastSync {
-    if (lastSyncTimestamp == 0) return Duration.zero;
-    return Duration(
-      milliseconds: DateTime.now().millisecondsSinceEpoch - lastSyncTimestamp,
-    );
-  }
-
-  @override
-  String toString() {
-    return 'SyncStats(lastSync: '
-        '${DateTime.fromMillisecondsSinceEpoch(lastSyncTimestamp)}, '
-        'pending: $pendingChangesCount, conflicts: $activeConflictsCount, '
-        'status: $connectivityStatus, syncing: $isSyncing)';
+  /// Cancels background sync task.
+  Future<void> _cancelBackgroundSync() async {
+    try {
+      await Workmanager().cancelByUniqueName('sync_${storageService.boxName}');
+    } catch (error, stackTrace) {
+      // Log but don't throw - we're already disposing
+      _emitError('cancel_background_sync', error, stackTrace);
+    }
   }
 }
 
-/// Background task callback dispatcher
+/// Internal enum for account migration scenarios.
+enum _AccountScenario {
+  /// Guest user signing in with cloud data
+  guestSignIn,
+
+  /// User uploading offline-created data
+  offlineDataUpload,
+
+  /// User switching between different accounts
+  accountSwitch,
+
+  /// Normal sync between same user's devices
+  normalSync,
+}
+
+/// Background task callback dispatcher for WorkManager.
 @pragma('vm:entry-point')
 void _callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
+    // Background sync implementation would go here
+    // This would need to reconstruct the sync service and execute sync
+    // For now, return success as a placeholder
     try {
-      // This would need to be implemented based on specific requirements
-      // For now, we'll return success
-      return Future.value(true);
+      // TODO: Implement background sync logic
+      // 1. Initialize Hive
+      // 2. Reconstruct storage service
+      // 3. Execute sync
+      return true;
     } catch (error) {
-      return Future.value(false);
+      return false;
     }
   });
 }

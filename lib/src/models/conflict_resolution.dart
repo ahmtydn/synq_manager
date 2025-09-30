@@ -1,6 +1,102 @@
 import 'package:meta/meta.dart';
 import 'package:synq_manager/src/models/sync_data.dart';
 
+/// Types of conflicts that can occur during synchronization
+enum ConflictType {
+  /// Different user accounts detected
+  userAccount,
+
+  /// Data conflicts between local and remote versions
+  dataConflict,
+
+  /// Version mismatch conflicts
+  versionMismatch,
+}
+
+/// Actions user can take for conflicts
+enum ConflictAction {
+  /// Use the local version (client wins)
+  useLocal,
+
+  /// Use the remote version (server wins)
+  useRemote,
+
+  /// Use the version with the latest timestamp
+  useLatestTimestamp,
+
+  /// Use the version with the highest version number
+  useHighestVersion,
+
+  /// Merge the versions using custom logic
+  merge,
+
+  /// For user account conflicts: overwrite local data with cloud data
+  useCloudData,
+
+  /// For user account conflicts: keep local data and cancel sync
+  keepLocalData,
+
+  /// Cancel the operation entirely
+  cancel,
+}
+
+/// Context information for conflict resolution
+class ConflictContext<T> {
+  const ConflictContext({
+    required this.type,
+    required this.key,
+    this.localUserId,
+    this.cloudUserId,
+    this.localData,
+    this.remoteData,
+    this.hasLocalData = false,
+    this.hasCloudData = false,
+    this.metadata = const {},
+  });
+
+  /// Type of conflict
+  final ConflictType type;
+
+  /// Key or identifier for the conflicted item
+  final String key;
+
+  /// Local user ID (for user account conflicts)
+  final String? localUserId;
+
+  /// Cloud user ID (for user account conflicts)
+  final String? cloudUserId;
+
+  /// Local data (for data conflicts)
+  final SyncData<T>? localData;
+
+  /// Remote data (for data conflicts)
+  final SyncData<T>? remoteData;
+
+  /// Whether local data exists
+  final bool hasLocalData;
+
+  /// Whether cloud data exists
+  final bool hasCloudData;
+
+  /// Additional metadata
+  final Map<String, dynamic> metadata;
+
+  /// Whether this is a user account conflict
+  bool get isUserAccountConflict => type == ConflictType.userAccount;
+
+  /// Whether this is a data conflict
+  bool get isDataConflict => type == ConflictType.dataConflict;
+
+  /// Whether this is a version mismatch conflict
+  bool get isVersionMismatch => type == ConflictType.versionMismatch;
+}
+
+/// Universal callback function for handling all types of conflicts
+/// Returns the action user wants to take for this conflict
+typedef ConflictResolutionCallback<T> = Future<ConflictAction> Function(
+  ConflictContext<T> context,
+);
+
 /// Strategy for resolving conflicts during synchronization
 enum ConflictResolutionStrategy {
   /// Use the local version (client wins)
