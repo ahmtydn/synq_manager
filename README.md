@@ -8,18 +8,25 @@ A powerful synchronization manager for Flutter apps with secure local storage, r
 
 ## ✨ Features
 
--  **Socket.io Style Events**: Intuitive event handling with `onInit`, `onCreate`, `onUpdate`, `onDelete`
+🎯 **Simplified Socket.io Style Events**: Clean, intuitive event handling with only essential callbacks
+- `onEvent` - Universal event listener for all events
+- `onInit` - Initialization with all existing data
+- `onCreate` - New item creation events
+- `onUpdate` - Item modification events  
+- `onDelete` - Item deletion events
+- `onError` - Error handling
+
 -  **Real-time Synchronization**: Automatic cloud sync with configurable intervals
 - 📱 **Background Sync**: Uses WorkManager for background synchronization when app is closed
 - 🔐 **Secure Storage**: Encrypted local storage with Hive Plus Secure
 - ⚔️ **Conflict Resolution**: Intelligent conflict handling with multiple resolution strategies
 - 🌐 **Connectivity Aware**: Automatic sync when network becomes available
 - 🎯 **Type-safe API**: Full TypeScript-like generics support for type safety
-- ⚡ **High Performance**: Optimized for mobile with configurable batch sizes
+- ⚡ **High Performance**: Optimized for mobile with single-instance listeners
 - 🔧 **Customizable**: Flexible configuration for different use cases
 - 📊 **Event-driven**: Real-time event streams for UI updates
 - 🏠 **Local-first**: Works offline, syncs when online
-- ⭐ **Builder Pattern**: Quick setup with fluent API
+- ⭐ **Cascade Notation**: Efficient single-instance listener pattern
 
 ## 🚀 Platform Support
 
@@ -402,79 +409,56 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _setupSocketStyleListeners();
   }
   
-  void _setupSocketStyleListeners() async {
-    // Method 1: Builder Pattern - Quick Setup
-    _listeners = await userManager.onInit((allProfiles) {
-      // Called when manager is ready with ALL data
-      print('📥 Loaded ${allProfiles.length} profiles');
-      setState(() {
-        _profiles = allProfiles.values.toList();
-      });
-    })
-    .onCreate((key, profile) {
-      // Called when NEW profile is created - only new data
-      print('✨ New profile created: ${profile.name}');
-      setState(() {
-        _profiles.add(profile);
-      });
-    })
-    .onUpdate((key, profile) {
-      // Called when profile is updated - only updated data
-      print('📝 Profile updated: ${profile.name}');
-      setState(() {
-        final index = _profiles.indexWhere((p) => p.id == key);
-        if (index != -1) _profiles[index] = profile;
-      });
-    })
-    .onDelete((key) {
-      // Called when profile is deleted - only key
-      print('🗑️ Profile deleted: $key');
-      setState(() {
-        _profiles.removeWhere((p) => p.id == key);
-      });
-    })
-    .onSyncStart(() {
-      setState(() => _syncing = true);
-    })
-    .onSyncComplete(() {
-      setState(() => _syncing = false);
-      _showMessage('Sync completed! ✅');
-    })
-    .onError((error) {
-      setState(() => _syncing = false);
-      _showError('Sync failed: $error');
-    })
-    .start(); // Don't forget to call start()!
-  }
-  
-  // Method 2: Fluent Interface - More Control
-  void _setupFluentListeners() {
+  void _setupSocketStyleListeners() {
+    // Simplified Socket.io style - single instance with cascade notation
     _listeners = userManager.on()
       ..onInit((allProfiles) {
-        setState(() => _profiles = allProfiles.values.toList());
+        // Called when manager is ready with ALL data
+        print('📥 Loaded ${allProfiles.length} profiles');
+        setState(() {
+          _profiles = allProfiles.values.toList();
+        });
       })
-      ..onChange((key, profile, action) {
-        // Single handler for all changes
-        print('$action: $key');
-        switch (action) {
-          case 'create':
-            setState(() => _profiles.add(profile!));
+      ..onCreate((key, profile) {
+        // Called when NEW profile is created - only new data
+        print('✨ New profile created: ${profile.name}');
+        setState(() {
+          _profiles.add(profile);
+        });
+      })
+      ..onUpdate((key, profile) {
+        // Called when profile is updated - only updated data
+        print('📝 Profile updated: ${profile.name}');
+        setState(() {
+          final index = _profiles.indexWhere((p) => p.id == key);
+          if (index != -1) _profiles[index] = profile;
+        });
+      })
+      ..onDelete((key) {
+        // Called when profile is deleted - only key
+        print('🗑️ Profile deleted: $key');
+        setState(() {
+          _profiles.removeWhere((p) => p.id == key);
+        });
+      })
+      ..onError((error) {
+        setState(() => _syncing = false);
+        _showError('Sync failed: $error');
+      })
+      ..onEvent((event) {
+        // Listen to all events - general callback
+        print('📊 Event: ${event.type}');
+        switch (event.type) {
+          case SynqEventType.syncStart:
+            setState(() => _syncing = true);
             break;
-          case 'update':
-            setState(() {
-              final index = _profiles.indexWhere((p) => p.id == key);
-              if (index != -1) _profiles[index] = profile!;
-            });
+          case SynqEventType.syncComplete:
+            setState(() => _syncing = false);
+            _showMessage('Sync completed! ✅');
             break;
-          case 'delete':
-            setState(() => _profiles.removeWhere((p) => p.id == key));
+          default:
             break;
         }
-      })
-      ..onSyncStart(() => setState(() => _syncing = true))
-      ..onSyncComplete(() => setState(() => _syncing = false))
-      ..onConnectionChange((isOnline) {
-        _showMessage(isOnline ? 'Back online! 🌐' : 'Gone offline 📴');
       });
   }
   
@@ -559,20 +543,29 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
 | Method | When Called | Data Provided | Use Case |
 |--------|-------------|---------------|----------|
+| `onEvent(callback)` | **All events** | **Event object** | Listen to all events in one place |
 | `onInit(callback)` | Manager ready | **All existing data** | Initialize UI with all data |
 | `onCreate(callback)` | New item added | **Only new item** | Add item to UI |
 | `onUpdate(callback)` | Item modified | **Only updated item** | Update item in UI |
 | `onDelete(callback)` | Item removed | **Only key** | Remove item from UI |
-| `onChange(callback)` | Any data change | **Key + data + action** | Handle all changes in one place |
-| `onSyncStart()` | Sync begins | - | Show loading |
-| `onSyncComplete()` | Sync ends | - | Hide loading |
 | `onError(callback)` | Error occurs | **Error object** | Show error message |
 
-**Key Benefits of Socket.io Style:**
-- 🚀 **Less Code**: No need to manually reload all data
-- ⚡ **Better Performance**: Only changed data is provided
-- 🎯 **More Intuitive**: Familiar API for web developers
-- 🔄 **Auto UI Updates**: UI automatically reflects changes
+**Key Benefits of Simplified API:**
+- 🚀 **Single Instance**: Uses cascade notation with one listener instance instead of multiple
+- ⚡ **Better Performance**: Reduced memory footprint and improved efficiency
+- 🎯 **Essential Callbacks Only**: Removed 10+ redundant callbacks, kept only the necessary 6
+- 🔄 **Universal Event Handler**: `onEvent()` captures all events for advanced use cases
+- � **Clean Code**: Intuitive API that's easy to understand and maintain
+
+**Pattern Comparison:**
+```dart
+// ❌ Old: Creates multiple instances
+manager.onInit(...).onCreate(...).onUpdate(...)
+
+// ✅ New: Single instance with cascade
+final listeners = manager.on();
+listeners..onInit(...)..onCreate(...)..onUpdate(...);
+```
 
 ## 🔧 Advanced Configuration
 

@@ -2,15 +2,7 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-import 'package:hive_plus_secure/hive_plus_secure.dart';
-import 'package:synq_manager/src/events/event_types.dart';
-import 'package:synq_manager/src/models/conflict_resolution.dart';
-import 'package:synq_manager/src/models/sync_config.dart';
-import 'package:synq_manager/src/models/sync_data.dart';
-import 'package:synq_manager/src/models/sync_event.dart';
-import 'package:synq_manager/src/services/storage_service.dart';
-import 'package:synq_manager/src/services/sync_service.dart';
+import 'package:synq_manager/synq_manager.dart';
 
 /// Main singleton manager for synchronization operations
 class SynqManager<T extends DocumentSerializable> {
@@ -45,6 +37,9 @@ class SynqManager<T extends DocumentSerializable> {
   /// Socket.io style event listeners instances
   final Map<String, SynqListeners<T>> _listenerInstances = {};
 
+  Map<String, SynqListeners<T>> get listenerInstances =>
+      Map.unmodifiable(_listenerInstances);
+
   /// Creates or retrieves a SynqManager instance
   ///
   /// [instanceName] - Unique name for this manager instance
@@ -60,6 +55,7 @@ class SynqManager<T extends DocumentSerializable> {
     SyncConfig? config,
     FromJsonFunction<T>? fromJson,
     ToJsonFunction<T>? toJson,
+    String? userId,
   }) async {
     final key = '${instanceName}_$T';
 
@@ -354,6 +350,46 @@ class SynqManager<T extends DocumentSerializable> {
     }
   }
 
+  // ========== SOCKET.IO STYLE API ==========
+
+  /// Creates a new SynqListeners instance for fluent API
+  SynqListeners<T> on() {
+    final listenerId = DateTime.now().millisecondsSinceEpoch.toString();
+    final listeners = SynqListeners<T>(this);
+    _listenerInstances[listenerId] = listeners;
+    return listeners;
+  }
+
+  /// Socket.io style onInit - called when manager is ready with all data
+  SynqListeners<T> onInit(void Function(Map<String, T> data) callback) {
+    return on().onInit(callback);
+  }
+
+  /// Socket.io style onCreate - called when new data is created
+  SynqListeners<T> onCreate(void Function(String key, T data) callback) {
+    return on().onCreate(callback);
+  }
+
+  /// Socket.io style onUpdate - called when data is updated
+  SynqListeners<T> onUpdate(void Function(String key, T data) callback) {
+    return on().onUpdate(callback);
+  }
+
+  /// Socket.io style onDelete - called when data is deleted
+  SynqListeners<T> onDelete(void Function(String key) callback) {
+    return on().onDelete(callback);
+  }
+
+  /// Socket.io style onEvent - called for all events
+  SynqListeners<T> onEventCallback(void Function(SynqEvent<T> event) callback) {
+    return on().onEvent(callback);
+  }
+
+  /// Socket.io style onError - called when errors occur
+  SynqListeners<T> onErrorCallback(void Function(Object error) callback) {
+    return on().onError(callback);
+  }
+
   // ========== LIFECYCLE MANAGEMENT ==========
 
   /// Closes the manager and releases all resources
@@ -389,454 +425,5 @@ class SynqManager<T extends DocumentSerializable> {
   String toString() {
     return 'SynqManager<$T>(name: $instanceName, ready: $isReady, '
         'syncing: $isSyncing, items: $length)';
-  }
-}
-
-/// Extension methods for easier usage patterns
-extension SynqManagerExtensions<T extends DocumentSerializable>
-    on SynqManager<T> {
-  /// Puts a value and waits for sync completion
-  Future<void> putAndSync(
-    String key,
-    T value, {
-    Map<String, dynamic>? metadata,
-  }) async {
-    await put(key, value, metadata: metadata);
-    await sync();
-  }
-
-  /// Updates a value and waits for sync completion
-  Future<void> updateAndSync(
-    String key,
-    T value, {
-    Map<String, dynamic>? metadata,
-  }) async {
-    await update(key, value, metadata: metadata);
-    await sync();
-  }
-
-  /// Deletes a value and waits for sync completion
-  Future<bool> deleteAndSync(String key) async {
-    final result = await delete(key);
-    await sync();
-    return result;
-  }
-
-  /// Listens to events with automatic error handling
-  StreamSubscription<SynqEvent<T>> listen({
-    void Function(SynqEvent<T> event)? onData,
-    void Function(Object error)? onError,
-    void Function()? onDone,
-  }) {
-    return events.listen(
-      onData,
-      onError: onError ??
-          (Object error) {
-            // Default error handling - could be customized
-            debugPrint('SynqManager error: $error');
-          },
-      onDone: onDone,
-    );
-  }
-
-  /// Waits for the next sync completion
-  Future<void> waitForSync() {
-    return onDone.first;
-  }
-
-  /// Waits for connectivity to be restored
-  Future<void> waitForConnection() {
-    if (connectivityStatus == ConnectivityStatus.online) {
-      return Future.value();
-    }
-    return onConnected.first;
-  }
-
-  // ========== SOCKET.IO STYLE EVENT LISTENERS ==========
-
-  /// Initialize Socket.io style listeners
-  SynqListeners<T> on([String? namespace]) {
-    final key = namespace ?? 'default';
-    _listenerInstances[key] ??= SynqListeners<T>(this);
-    return _listenerInstances[key]!;
-  }
-
-  /// Quick setup method similar to Socket.io
-  ///
-  /// Example:
-  /// ```dart
-  /// await manager.onInit((data) {
-  ///   print('Initial data loaded: ${data.length} items');
-  /// }).onUpdate((key, data) {
-  ///   print('Data updated: $key');
-  /// }).onError((error) {
-  ///   print('Error occurred: $error');
-  /// }).start();
-  /// ```
-  SynqSocketBuilder<T> onInit(void Function(Map<String, T> data) callback) {
-    return SynqSocketBuilder<T>(this, callback);
-  }
-}
-
-/// Socket.io style event listeners for SynqManager
-class SynqListeners<T extends DocumentSerializable> {
-  SynqListeners(this._manager);
-  final SynqManager<T> _manager;
-  final List<StreamSubscription<dynamic>> _subscriptions = [];
-
-  /// Listen for initial data load (when manager becomes ready)
-  SynqListeners<T> onInit(void Function(Map<String, T> data) callback) {
-    // Store the callback to be called manually, don't auto-subscribe to events
-    // This prevents double initialization
-    return this;
-  }
-
-  /// Listen for data creation events
-  SynqListeners<T> onCreate(void Function(String key, T data) callback) {
-    _subscriptions.add(
-      _manager.onEvent(SynqEventType.create).listen((event) async {
-        if (event.data.value != null) {
-          callback(event.key, event.data.value!);
-        }
-      }),
-    );
-    return this;
-  }
-
-  /// Listen for data update events
-  SynqListeners<T> onUpdate(void Function(String key, T data) callback) {
-    _subscriptions.add(
-      _manager.onEvent(SynqEventType.update).listen((event) async {
-        if (event.data.value != null) {
-          callback(event.key, event.data.value!);
-        }
-      }),
-    );
-    return this;
-  }
-
-  /// Listen for data delete events
-  SynqListeners<T> onDelete(void Function(String key) callback) {
-    _subscriptions.add(
-      _manager.onEvent(SynqEventType.delete).listen((event) {
-        callback(event.key);
-      }),
-    );
-    return this;
-  }
-
-  /// Listen for any data change (create, update, delete)
-  SynqListeners<T> onChange(
-      void Function(String key, T? data, String action) callback) {
-    _subscriptions.add(
-      _manager.onData.listen((event) {
-        String action;
-        final value = event.data.value;
-
-        switch (event.type) {
-          case SynqEventType.create:
-            action = 'create';
-          case SynqEventType.update:
-            action = 'update';
-          case SynqEventType.delete:
-            action = 'delete';
-          default:
-            return;
-        }
-        callback(event.key, value, action);
-      }),
-    );
-    return this;
-  }
-
-  /// Listen for sync completion events
-  SynqListeners<T> onSyncComplete(void Function() callback) {
-    _subscriptions.add(
-      _manager.onDone.listen((_) => callback()),
-    );
-    return this;
-  }
-
-  /// Listen for sync start events
-  SynqListeners<T> onSyncStart(void Function() callback) {
-    _subscriptions.add(
-      _manager.onEvent(SynqEventType.syncStart).listen((_) => callback()),
-    );
-    return this;
-  }
-
-  /// Listen for error events
-  SynqListeners<T> onError(void Function(Object error) callback) {
-    _subscriptions.add(
-      _manager.onError
-          .listen((event) => callback(event.error ?? 'Unknown error')),
-    );
-    return this;
-  }
-
-  /// Listen for conflict events
-  SynqListeners<T> onConflict(
-      void Function(String key, Object conflict) callback) {
-    _subscriptions.add(
-      _manager.onConflict.listen((event) {
-        // Since conflict data structure might vary, we pass the error or metadata
-        callback(
-          event.key,
-          (event.metadata['conflict'] as Object?) ??
-              event.error ??
-              'Conflict detected',
-        );
-      }),
-    );
-    return this;
-  }
-
-  /// Listen for connection status changes
-  SynqListeners<T> onConnectionChange(void Function(bool isOnline) callback) {
-    _subscriptions.add(
-      _manager.onConnected.listen((_) => callback(true)),
-    );
-    _subscriptions.add(
-      _manager.onDisconnected.listen((_) => callback(false)),
-    );
-    return this;
-  }
-
-  /// Listen for cloud sync start events
-  SynqListeners<T> onCloudSyncStart(void Function() callback) {
-    _subscriptions.add(
-      _manager.onEvent(SynqEventType.cloudSyncStart).listen((_) => callback()),
-    );
-    return this;
-  }
-
-  /// Listen for cloud sync success events
-  SynqListeners<T> onCloudSyncSuccess(
-      void Function(Map<String, dynamic> metadata) callback) {
-    _subscriptions.add(
-      _manager
-          .onEvent(SynqEventType.cloudSyncSuccess)
-          .listen((event) => callback(event.metadata)),
-    );
-    return this;
-  }
-
-  /// Listen for cloud sync error events
-  SynqListeners<T> onCloudSyncError(
-      void Function(Object error, Map<String, dynamic> metadata) callback) {
-    _subscriptions.add(
-      _manager.onEvent(SynqEventType.cloudSyncError).listen((event) => callback(
-            event.error ?? 'Unknown cloud sync error',
-            event.metadata,
-          )),
-    );
-    return this;
-  }
-
-  /// Listen for cloud fetch start events
-  SynqListeners<T> onCloudFetchStart(void Function() callback) {
-    _subscriptions.add(
-      _manager.onEvent(SynqEventType.cloudFetchStart).listen((_) => callback()),
-    );
-    return this;
-  }
-
-  /// Listen for cloud fetch success events
-  SynqListeners<T> onCloudFetchSuccess(
-      void Function(Map<String, dynamic> metadata) callback) {
-    _subscriptions.add(
-      _manager
-          .onEvent(SynqEventType.cloudFetchSuccess)
-          .listen((event) => callback(event.metadata)),
-    );
-    return this;
-  }
-
-  /// Listen for cloud fetch error events
-  SynqListeners<T> onCloudFetchError(
-      void Function(Object error, Map<String, dynamic> metadata) callback) {
-    _subscriptions.add(
-      _manager
-          .onEvent(SynqEventType.cloudFetchError)
-          .listen((event) => callback(
-                event.error ?? 'Unknown cloud fetch error',
-                event.metadata,
-              )),
-    );
-    return this;
-  }
-
-  /// Cancel all event listeners
-  void dispose() {
-    for (final subscription in _subscriptions) {
-      subscription.cancel();
-    }
-    _subscriptions.clear();
-  }
-}
-
-/// Socket.io style builder pattern for quick setup
-class SynqSocketBuilder<T extends DocumentSerializable> {
-  SynqSocketBuilder(this._manager, this._onInit);
-  final SynqManager<T> _manager;
-  final void Function(Map<String, T> data) _onInit;
-  void Function(String key, T data)? _onCreate;
-  void Function(String key, T data)? _onUpdate;
-  void Function(String key)? _onDelete;
-  void Function(Object error)? _onError;
-  void Function()? _onSyncComplete;
-  void Function()? _onSyncStart;
-  void Function()? _onCloudSyncStart;
-  void Function(Map<String, dynamic> metadata)? _onCloudSyncSuccess;
-  void Function(Object error, Map<String, dynamic> metadata)? _onCloudSyncError;
-  void Function()? _onCloudFetchStart;
-  void Function(Map<String, dynamic> metadata)? _onCloudFetchSuccess;
-  void Function(Object error, Map<String, dynamic> metadata)?
-      _onCloudFetchError;
-
-  /// Set create event handler
-  SynqSocketBuilder<T> onCreate(void Function(String key, T data) callback) {
-    _onCreate = callback;
-    return this;
-  }
-
-  /// Set update event handler
-  SynqSocketBuilder<T> onUpdate(void Function(String key, T data) callback) {
-    _onUpdate = callback;
-    return this;
-  }
-
-  /// Set delete event handler
-  SynqSocketBuilder<T> onDelete(void Function(String key) callback) {
-    _onDelete = callback;
-    return this;
-  }
-
-  /// Set error event handler
-  SynqSocketBuilder<T> onError(void Function(Object error) callback) {
-    _onError = callback;
-    return this;
-  }
-
-  /// Set sync complete event handler
-  SynqSocketBuilder<T> onSyncComplete(void Function() callback) {
-    _onSyncComplete = callback;
-    return this;
-  }
-
-  /// Set sync start event handler
-  SynqSocketBuilder<T> onSyncStart(void Function() callback) {
-    _onSyncStart = callback;
-    return this;
-  }
-
-  /// Set cloud sync start event handler
-  SynqSocketBuilder<T> onCloudSyncStart(void Function() callback) {
-    _onCloudSyncStart = callback;
-    return this;
-  }
-
-  /// Set cloud sync success event handler
-  SynqSocketBuilder<T> onCloudSyncSuccess(
-      void Function(Map<String, dynamic> metadata) callback) {
-    _onCloudSyncSuccess = callback;
-    return this;
-  }
-
-  /// Set cloud sync error event handler
-  SynqSocketBuilder<T> onCloudSyncError(
-      void Function(Object error, Map<String, dynamic> metadata) callback) {
-    _onCloudSyncError = callback;
-    return this;
-  }
-
-  /// Set cloud fetch start event handler
-  SynqSocketBuilder<T> onCloudFetchStart(void Function() callback) {
-    _onCloudFetchStart = callback;
-    return this;
-  }
-
-  /// Set cloud fetch success event handler
-  SynqSocketBuilder<T> onCloudFetchSuccess(
-      void Function(Map<String, dynamic> metadata) callback) {
-    _onCloudFetchSuccess = callback;
-    return this;
-  }
-
-  /// Set cloud fetch error event handler
-  SynqSocketBuilder<T> onCloudFetchError(
-      void Function(Object error, Map<String, dynamic> metadata) callback) {
-    _onCloudFetchError = callback;
-    return this;
-  }
-
-  /// Start listening and trigger initial data load
-  Future<SynqListeners<T>> start() async {
-    final listeners = _manager.on();
-
-    // Set up all listeners EXCEPT onInit to prevent double triggering
-    if (_onCreate != null) {
-      listeners.onCreate(_onCreate!);
-    }
-
-    if (_onUpdate != null) {
-      listeners.onUpdate(_onUpdate!);
-    }
-
-    if (_onDelete != null) {
-      listeners.onDelete(_onDelete!);
-    }
-
-    if (_onError != null) {
-      listeners.onError(_onError!);
-    }
-
-    if (_onSyncComplete != null) {
-      listeners.onSyncComplete(_onSyncComplete!);
-    }
-
-    if (_onSyncStart != null) {
-      listeners.onSyncStart(_onSyncStart!);
-    }
-
-    if (_onCloudSyncStart != null) {
-      listeners.onCloudSyncStart(_onCloudSyncStart!);
-    }
-
-    if (_onCloudSyncSuccess != null) {
-      listeners.onCloudSyncSuccess(_onCloudSyncSuccess!);
-    }
-
-    if (_onCloudSyncError != null) {
-      listeners.onCloudSyncError(_onCloudSyncError!);
-    }
-
-    if (_onCloudFetchStart != null) {
-      listeners.onCloudFetchStart(_onCloudFetchStart!);
-    }
-
-    if (_onCloudFetchSuccess != null) {
-      listeners.onCloudFetchSuccess(_onCloudFetchSuccess!);
-    }
-
-    if (_onCloudFetchError != null) {
-      listeners.onCloudFetchError(_onCloudFetchError!);
-    }
-
-    // Trigger initial data load ONLY ONCE when manager is ready
-    if (_manager.isReady) {
-      final data = await _manager.getAll();
-      _onInit(data);
-    } else {
-      // If not ready, wait for connected event and trigger init once
-      final subscription = _manager.onConnected.listen((_) async {
-        final data = await _manager.getAll();
-        _onInit(data);
-      });
-      // Add subscription to listeners for proper cleanup
-      listeners._subscriptions.add(subscription);
-    }
-
-    return listeners;
   }
 }

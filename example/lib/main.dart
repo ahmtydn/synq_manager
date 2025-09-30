@@ -76,80 +76,55 @@ class _NotesScreenState extends State<NotesScreen> {
         toJson: (note) => note.toJson(),
       );
 
-      // Socket.io style event listening - Method 1: Builder Pattern
-      await _synqManager!.onInit((data) {
-        // Initial data loaded
-        debugPrint('📥 Initial data loaded: ${data.length} items');
-        _refreshNotesFromData(data);
-      }).onCreate((key, data) {
-        // New data created
-        debugPrint('✨ Data created: $key');
-        _loadNotes();
-      }).onUpdate((key, data) {
-        // Data updated
-        debugPrint('📝 Data updated: $key');
-        _loadNotes();
-      }).onDelete((key) {
-        // Data deleted
-        debugPrint('🗑️ Data deleted: $key');
-        _loadNotes();
-      }).onSyncStart(() {
-        setState(() {
-          _isSyncing = true;
-          _status = 'Synchronization started...';
-        });
-      }).onSyncComplete(() {
-        setState(() {
-          _isSyncing = false;
-          _status = 'Synchronization completed';
-        });
-      }).onCloudSyncStart(() {
-        debugPrint('🚀 Cloud sync started');
-        setState(() {
-          _status = 'Pushing to cloud...';
-        });
-      }).onCloudSyncSuccess((metadata) {
-        debugPrint('✅ Cloud sync success: $metadata');
-        setState(() {
-          _status = 'Cloud sync completed';
-        });
-      }).onCloudSyncError((error, metadata) {
-        debugPrint('❌ Cloud sync error: $error, metadata: $metadata');
-        setState(() {
-          _status = 'Cloud sync failed: $error';
-        });
-      }).onCloudFetchStart(() {
-        debugPrint('📡 Cloud fetch started');
-        setState(() {
-          _status = 'Fetching from cloud...';
-        });
-      }).onCloudFetchSuccess((metadata) {
-        debugPrint('📥 Cloud fetch success: $metadata');
-        setState(() {
-          _status = 'Cloud fetch completed';
-        });
-      }).onCloudFetchError((error, metadata) {
-        debugPrint('❌ Cloud fetch error: $error, metadata: $metadata');
-        setState(() {
-          _status = 'Cloud fetch failed: $error';
-        });
-      }).onError((error) {
-        setState(() {
-          _isSyncing = false;
-          _status = 'Error: $error';
-        });
-      }).start();
+      // Sadeleştirilmiş Socket.io style event listening
+      final listeners = _synqManager!.on();
+      listeners
+        ..onInit((data) {
+          // Initial data loaded
+          debugPrint('📥 Initial data loaded: ${data.length} items');
+          _refreshNotesFromData(data);
+        })
+        ..onCreate((key, data) {
+          // New data created
+          debugPrint('✨ Data created: $key');
+          _loadNotes();
+        })
+        ..onUpdate((key, data) {
+          // Data updated
+          debugPrint('📝 Data updated: $key');
+          _loadNotes();
+        })
+        ..onDelete((key) {
+          // Data deleted
+          debugPrint('🗑️ Data deleted: $key');
+          _loadNotes();
+        })
+        ..onError((error) {
+          setState(() {
+            _isSyncing = false;
+            _status = 'Error: $error';
+          });
+        })
+        ..onEvent((event) {
+          debugPrint('📊 Event: ${event.type} for key: ${event.key}');
 
-      // Alternative Socket.io style - Method 2: Fluent Interface
-      // final listeners = _synqManager!.on()
-      //   ..onInit((data) => _refreshNotesFromData(data))
-      //   ..onChange((key, data, action) {
-      //     print('📊 Data changed: $key -> $action');
-      //     _loadNotes();
-      //   })
-      //   ..onSyncStart(() => setState(() => _isSyncing = true))
-      //   ..onSyncComplete(() => setState(() => _isSyncing = false))
-      //   ..onError((error) => print('❌ Error: $error'));
+          switch (event.type) {
+            case SynqEventType.syncStart:
+              setState(() {
+                _isSyncing = true;
+                _status = 'Synchronization started...';
+              });
+              break;
+            case SynqEventType.syncComplete:
+              setState(() {
+                _isSyncing = false;
+                _status = 'Synchronization completed';
+              });
+              break;
+            default:
+              break;
+          }
+        });
 
       setState(() {
         _isLoading = false;
