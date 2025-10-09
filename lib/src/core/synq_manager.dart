@@ -23,7 +23,10 @@ import 'package:synq_manager/src/utils/connectivity_checker.dart';
 import 'package:synq_manager/src/utils/logger.dart';
 import 'package:uuid/uuid.dart';
 
+/// Main entry point for managing synchronization
+/// between local and remote data.
 class SynqManager<T extends SyncableEntity> {
+  /// Creates a SynqManager instance.
   SynqManager({
     required this.localAdapter,
     required this.remoteAdapter,
@@ -42,11 +45,22 @@ class SynqManager<T extends SyncableEntity> {
         _statusSubject = BehaviorSubject<SyncStatusSnapshot>(),
         _metrics = SynqMetrics();
 
+  /// Local data adapter.
   final LocalAdapter<T> localAdapter;
+
+  /// Remote data adapter.
   final RemoteAdapter<T> remoteAdapter;
+
+  /// Conflict resolution strategy.
   final SyncConflictResolver<T> conflictResolver;
+
+  /// Configuration settings.
   final SynqConfig config;
+
+  /// Connectivity checker.
   final ConnectivityChecker connectivityChecker;
+
+  /// Logger instance.
   final SynqLogger logger;
 
   final StreamController<SyncEvent<T>> _eventController;
@@ -61,41 +75,52 @@ class SynqManager<T extends SyncableEntity> {
 
   bool _initialized = false;
 
+  /// Stream of all sync events.
   Stream<SyncEvent<T>> get eventStream => _eventController.stream;
 
+  /// Stream of data change events.
   Stream<DataChangeEvent<T>> get onDataChange => eventStream
       .where((event) => event is DataChangeEvent<T>)
       .cast<DataChangeEvent<T>>();
 
+  /// Stream of sync started events.
   Stream<SyncStartedEvent<T>> get onSyncStarted => eventStream
       .where((event) => event is SyncStartedEvent<T>)
       .cast<SyncStartedEvent<T>>();
 
+  /// Stream of sync progress events.
   Stream<SyncProgressEvent<T>> get onSyncProgress => eventStream
       .where((event) => event is SyncProgressEvent<T>)
       .cast<SyncProgressEvent<T>>();
 
+  /// Stream of sync completed events.
   Stream<SyncCompletedEvent<T>> get onSyncCompleted => eventStream
       .where((event) => event is SyncCompletedEvent<T>)
       .cast<SyncCompletedEvent<T>>();
 
+  /// Stream of conflict detected events.
   Stream<ConflictDetectedEvent<T>> get onConflict => eventStream
       .where((event) => event is ConflictDetectedEvent<T>)
       .cast<ConflictDetectedEvent<T>>();
 
+  /// Stream of user switched events.
   Stream<UserSwitchedEvent<T>> get onUserSwitched => eventStream
       .where((event) => event is UserSwitchedEvent<T>)
       .cast<UserSwitchedEvent<T>>();
 
+  /// Stream of sync error events.
   Stream<SyncErrorEvent<T>> get onError => eventStream
       .where((event) => event is SyncErrorEvent<T>)
       .cast<SyncErrorEvent<T>>();
 
+  /// Stream of sync status snapshots.
   Stream<SyncStatusSnapshot> get syncStatusStream => _statusSubject.stream;
 
+  /// Adds a middleware to the processing pipeline.
   void addMiddleware(SynqMiddleware<T> middleware) =>
       _middlewares.add(middleware);
 
+  /// Initializes the sync manager.
   Future<void> initialize() async {
     if (_initialized) return;
     await localAdapter.initialize();
@@ -117,12 +142,19 @@ class SynqManager<T extends SyncableEntity> {
     _initialized = true;
   }
 
+  /// Retrieves all entities for a specific user from local storage.
+  ///
+  /// Returns a list of entities after applying post-fetch transformations.
   Future<List<T>> getAll(String userId) async {
     _ensureInitialized();
     final items = await localAdapter.getAll(userId);
     return Future.wait(items.map(_transformAfterFetch));
   }
 
+  /// Retrieves a single entity by ID for a specific user.
+  ///
+  /// Returns the entity if found, or null otherwise.
+  /// Applies post-fetch transformations.
   Future<T?> getById(String id, String userId) async {
     _ensureInitialized();
     final item = await localAdapter.getById(id, userId);
@@ -130,6 +162,10 @@ class SynqManager<T extends SyncableEntity> {
     return _transformAfterFetch(item);
   }
 
+  /// Saves an entity to local storage and queues it for synchronization.
+  ///
+  /// Creates a new entity if it doesn't exist, or updates an existing one.
+  /// Applies pre-save transformations and triggers a data change event.
   Future<T> save(T item, String userId) async {
     _ensureInitialized();
     await _queueManager.initializeUser(userId);
@@ -160,6 +196,11 @@ class SynqManager<T extends SyncableEntity> {
     return transformed;
   }
 
+  /// Deletes an entity from local storage and
+  /// queues the deletion for synchronization.
+  ///
+  /// If the entity doesn't exist locally, the operation is skipped.
+  /// Triggers a data change event for the deletion.
   Future<void> delete(String id, String userId) async {
     _ensureInitialized();
     await _queueManager.initializeUser(userId);
@@ -186,6 +227,10 @@ class SynqManager<T extends SyncableEntity> {
     );
   }
 
+  /// Initiates a synchronization process for a specific user.
+  ///
+  /// Syncs local changes to the remote source and pulls remote changes.
+  /// Can be forced to run even if conditions are not met. Updates metrics.
   Future<SyncResult> sync(
     String userId, {
     bool force = false,
@@ -205,31 +250,41 @@ class SynqManager<T extends SyncableEntity> {
     return result;
   }
 
+  /// Cancels an ongoing synchronization process for a specific user.
   Future<void> cancelSync(String userId) async {
     _ensureInitialized();
     _syncEngine?.cancel(userId);
   }
 
+  /// Pauses an ongoing synchronization process for a specific user.
   Future<void> pauseSync(String userId) async {
     _ensureInitialized();
     await _syncEngine?.pause(userId);
   }
 
+  /// Resumes a paused synchronization process for a specific user.
   Future<void> resumeSync(String userId) async {
     _ensureInitialized();
     _syncEngine?.resume(userId);
   }
 
+  /// Retrieves the current synchronization status snapshot for a user.
   Future<SyncStatusSnapshot> getSyncSnapshot(String userId) async {
     _ensureInitialized();
     return _syncEngine!.getSnapshot(userId);
   }
 
+  /// Retrieves synchronization statistics for a specific user.
   Future<SyncStatistics> getSyncStatistics(String userId) async {
     _ensureInitialized();
     return _statistics;
   }
 
+  /// Switches the active user, optionally handling unsynced data.
+  ///
+  /// Supports different strategies: sync before switch,
+  /// discard changes, or queue changes.
+  /// Returns the result of the user switch operation including any errors.
   Future<UserSwitchResult> switchUser({
     required String? oldUserId,
     required String newUserId,
@@ -285,6 +340,10 @@ class SynqManager<T extends SyncableEntity> {
     }
   }
 
+  /// Starts automatic periodic synchronization for a user.
+  ///
+  /// Syncs at the specified interval or uses the default from config.
+  /// Stops any existing auto-sync for the same user first.
   void startAutoSync(String userId, {Duration? interval}) {
     _ensureInitialized();
     stopAutoSync(userId: userId);
@@ -294,6 +353,10 @@ class SynqManager<T extends SyncableEntity> {
     });
   }
 
+  /// Stops automatic synchronization for one or all users.
+  ///
+  /// If a userId is provided, stops auto-sync for that user only.
+  /// Otherwise, stops all active auto-syncs.
   void stopAutoSync({String? userId}) {
     if (userId != null) {
       _autoSyncTimers.remove(userId)?.cancel();
@@ -305,28 +368,35 @@ class SynqManager<T extends SyncableEntity> {
     _autoSyncTimers.clear();
   }
 
+  /// Gets the current synchronization status for a user.
   Future<SyncStatus> getSyncStatus(String userId) async {
     final snapshot = await getSyncSnapshot(userId);
     return snapshot.status;
   }
 
+  /// Returns the number of pending operations for a user.
   Future<int> getPendingCount(String userId) async {
     _ensureInitialized();
     await _queueManager.initializeUser(userId);
     return _queueManager.getPending(userId).length;
   }
 
+  /// Retries all failed sync operations for a user by forcing a new sync.
   Future<void> retryFailedOperations(String userId) async {
     _ensureInitialized();
     await sync(userId, force: true);
   }
 
+  /// Clears failed operations from the queue (not yet implemented).
   Future<void> clearFailedOperations(String userId) async {
     _ensureInitialized();
     // For now failed operations remain in queue; we simply log.
     logger.warn('clearFailedOperations is not yet implemented.');
   }
 
+  /// Disposes of all resources and closes streams.
+  ///
+  /// Should be called when the sync manager is no longer needed.
   Future<void> dispose() async {
     stopAutoSync();
     await _eventController.close();

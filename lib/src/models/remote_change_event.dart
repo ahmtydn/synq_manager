@@ -11,22 +11,22 @@ class RemoteChangeEvent<T extends SyncableEntity> {
     this.data,
     this.sourceDeviceId,
   });
-  
+
   /// The changed entity data.
   final T? data;
-  
+
   /// ID of the changed entity.
   final String entityId;
-  
+
   /// User ID associated with the change.
   final String userId;
-  
+
   /// Type of change that occurred.
   final RemoteChangeType changeType;
-  
+
   /// Timestamp when the change occurred.
   final DateTime timestamp;
-  
+
   /// Optional device ID that originated the change.
   final String? sourceDeviceId;
 }
@@ -35,10 +35,10 @@ class RemoteChangeEvent<T extends SyncableEntity> {
 enum RemoteChangeType {
   /// Entity was created.
   created,
-  
+
   /// Entity was updated.
   updated,
-  
+
   /// Entity was deleted.
   deleted,
 }

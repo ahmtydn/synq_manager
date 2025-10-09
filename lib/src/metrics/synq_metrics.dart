@@ -1,4 +1,6 @@
+/// Tracks metrics and statistics for sync operations.
 class SynqMetrics {
+  /// Creates sync metrics.
   SynqMetrics({
     this.totalSyncOperations = 0,
     this.successfulSyncs = 0,
@@ -12,18 +14,41 @@ class SynqMetrics {
     Set<String>? activeUsers,
     this.userSwitchCount = 0,
   }) : activeUsers = activeUsers ?? <String>{};
+
+  /// Total number of sync operations performed.
   int totalSyncOperations;
+
+  /// Number of successful syncs.
   int successfulSyncs;
+
+  /// Number of failed syncs.
   int failedSyncs;
+
+  /// Average duration of sync operations.
   Duration averageSyncDuration;
+
+  /// Number of conflicts detected.
   int conflictsDetected;
+
+  /// Number of conflicts resolved automatically.
   int conflictsResolvedAuto;
+
+  /// Number of conflicts requiring user intervention.
   int conflictsRequiringUser;
+
+  /// Total bytes uploaded.
   int bytesUploaded;
+
+  /// Total bytes downloaded.
   int bytesDownloaded;
+
+  /// Set of active user IDs.
   final Set<String> activeUsers;
+
+  /// Number of user switches performed.
   int userSwitchCount;
 
+  /// Converts metrics to JSON format.
   Map<String, dynamic> toJson() => {
         'total_sync_operations': totalSyncOperations,
         'successful_syncs': successfulSyncs,

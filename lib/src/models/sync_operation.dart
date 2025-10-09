@@ -2,10 +2,31 @@ import 'package:meta/meta.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
 
 /// Type of operation recorded in the sync queue.
-enum SyncOperationType { create, update, delete }
+enum SyncOperationType {
+  /// Create a new entity.
+  create,
+
+  /// Update an existing entity.
+  update,
+
+  /// Delete an existing entity.
+  delete,
+}
 
 /// Current status of a queued operation.
-enum SyncOperationStatus { pending, inProgress, completed, failed }
+enum SyncOperationStatus {
+  /// Operation is waiting to be executed.
+  pending,
+
+  /// Operation is currently being executed.
+  inProgress,
+
+  /// Operation completed successfully.
+  completed,
+
+  /// Operation failed after execution.
+  failed,
+}
 
 /// Representation of a local operation that needs to be synchronized remotely.
 @immutable

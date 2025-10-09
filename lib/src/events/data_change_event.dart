@@ -3,6 +3,7 @@ import 'package:synq_manager/src/models/syncable_entity.dart';
 
 /// Event emitted whenever local or remote data changes.
 class DataChangeEvent<T extends SyncableEntity> extends SyncEvent<T> {
+  /// Creates a data change event.
   DataChangeEvent({
     required super.userId,
     required this.data,
@@ -10,11 +11,37 @@ class DataChangeEvent<T extends SyncableEntity> extends SyncEvent<T> {
     required this.source,
     DateTime? timestamp,
   }) : super(timestamp: timestamp ?? DateTime.now());
+
+  /// The changed data.
   final T data;
+
+  /// Type of change that occurred.
   final ChangeType changeType;
+
+  /// Source of the change.
   final DataSource source;
 }
 
-enum ChangeType { created, updated, deleted }
+/// Type of data change.
+enum ChangeType {
+  /// Data was created.
+  created,
 
-enum DataSource { local, remote, merged }
+  /// Data was updated.
+  updated,
+
+  /// Data was deleted.
+  deleted
+}
+
+/// Source of data change.
+enum DataSource {
+  /// Change originated locally.
+  local,
+
+  /// Change came from remote source.
+  remote,
+
+  /// Change is a result of merging.
+  merged
+}

@@ -2,10 +2,19 @@ import 'package:synq_manager/src/models/syncable_entity.dart';
 
 /// Strategies used when resolving conflicts.
 enum ResolutionStrategy {
+  /// Keep the local version.
   useLocal,
+
+  /// Use the remote version.
   useRemote,
+
+  /// Merge both versions together.
   merge,
+
+  /// Ask the user to decide.
   askUser,
+
+  /// Abort the operation.
   abort,
 }
 
@@ -50,16 +59,16 @@ class ConflictResolution<T extends SyncableEntity> {
         strategy: ResolutionStrategy.abort,
         message: reason,
       );
-      
+
   /// The strategy used to resolve the conflict.
   final ResolutionStrategy strategy;
-  
+
   /// The resolved entity data.
   final T? resolvedData;
-  
+
   /// Whether user input is required.
   final bool requiresUserInput;
-  
+
   /// Optional message about the resolution.
   final String? message;
 }

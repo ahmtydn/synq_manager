@@ -51,6 +51,7 @@ class QueueManager<T extends SyncableEntity> {
     );
   }
 
+  /// Marks an operation as completed and removes it from the queue.
   Future<void> markCompleted(String userId, String operationId) async {
     final list = _pendingByUser[userId];
     if (list == null) return;
@@ -60,11 +61,13 @@ class QueueManager<T extends SyncableEntity> {
     logger.debug('Marked operation $operationId as synced for $userId');
   }
 
+  /// Clears all pending operations for a user.
   Future<void> clear(String userId) async {
     _pendingByUser[userId]?.clear();
     _controllers[userId]?.add(const []);
   }
 
+  /// Disposes resources.
   Future<void> dispose() async {
     for (final controller in _controllers.values) {
       await controller.close();

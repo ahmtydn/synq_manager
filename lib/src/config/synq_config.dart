@@ -2,13 +2,22 @@ import 'package:synq_manager/src/resolvers/sync_conflict_resolver.dart';
 
 /// Strategies available when switching between users.
 enum UserSwitchStrategy {
+  /// Clear local data and fetch fresh from remote.
   clearAndFetch,
+
+  /// Sync current user's data before switching.
   syncThenSwitch,
+
+  /// Prompt the user if there's unsynced data.
   promptIfUnsyncedData,
+
+  /// Keep local data as-is.
   keepLocal,
 }
 
+/// Configuration for SynqManager behavior.
 class SynqConfig {
+  /// Creates a sync configuration.
   const SynqConfig({
     this.autoSyncInterval = const Duration(minutes: 5),
     this.autoSyncOnConnect = true,
@@ -22,18 +31,40 @@ class SynqConfig {
     this.enableLogging = false,
   });
 
+  /// Creates default configuration.
   factory SynqConfig.defaultConfig() => const SynqConfig();
+
+  /// Interval between automatic sync operations.
   final Duration autoSyncInterval;
+
+  /// Whether to automatically sync when connectivity is restored.
   final bool autoSyncOnConnect;
+
+  /// Maximum number of retry attempts for failed operations.
   final int maxRetries;
+
+  /// Delay between retry attempts.
   final Duration retryDelay;
+
+  /// Number of operations to sync in a single batch.
   final int batchSize;
+
+  /// Default conflict resolution strategy.
   final SyncConflictResolver<dynamic>? defaultConflictResolver;
+
+  /// Default strategy for user switching.
   final UserSwitchStrategy defaultUserSwitchStrategy;
+
+  /// Whether to enable real-time synchronization.
   final bool enableRealTimeSync;
+
+  /// Timeout for sync operations.
   final Duration syncTimeout;
+
+  /// Whether to enable logging.
   final bool enableLogging;
 
+  /// Creates a copy with modified fields.
   SynqConfig copyWith({
     Duration? autoSyncInterval,
     bool? autoSyncOnConnect,

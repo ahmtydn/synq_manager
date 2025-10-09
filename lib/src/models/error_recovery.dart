@@ -9,16 +9,16 @@ class ErrorRecoveryStrategy {
     this.backoffStrategy = const ExponentialBackoff(),
     this.onError,
   });
-  
+
   /// Maximum number of retry attempts.
   final int maxRetries;
-  
+
   /// Strategy for calculating delay between retries.
   final BackoffStrategy backoffStrategy;
-  
+
   /// Determines if an error should trigger a retry.
   final bool Function(SynqException error) shouldRetry;
-  
+
   /// Optional callback invoked when an error occurs.
   final Future<void> Function(SynqException error)? onError;
 }
@@ -37,13 +37,13 @@ class ExponentialBackoff implements BackoffStrategy {
     this.multiplier = 2.0,
     this.maxDelay = const Duration(minutes: 5),
   });
-  
+
   /// Initial delay before first retry.
   final Duration baseDelay;
-  
+
   /// Multiplier applied to each subsequent retry delay.
   final double multiplier;
-  
+
   /// Maximum delay cap.
   final Duration maxDelay;
 
@@ -59,7 +59,7 @@ class ExponentialBackoff implements BackoffStrategy {
 class LinearBackoff implements BackoffStrategy {
   /// Creates a linear backoff strategy.
   const LinearBackoff({this.increment = const Duration(seconds: 5)});
-  
+
   /// Time increment added for each retry attempt.
   final Duration increment;
 

@@ -3,6 +3,7 @@ import 'package:synq_manager/src/models/conflict_resolution.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
 import 'package:synq_manager/src/resolvers/sync_conflict_resolver.dart';
 
+/// Resolves conflicts by choosing the most recently modified version.
 class LastWriteWinsResolver<T extends SyncableEntity>
     extends SyncConflictResolver<T> {
   @override

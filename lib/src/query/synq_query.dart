@@ -2,10 +2,15 @@ import 'dart:async';
 
 import 'package:synq_manager/src/models/syncable_entity.dart';
 
+/// Predicate function type for filtering.
 typedef Predicate<T> = bool Function(T);
+
+/// Selector function type for ordering.
 typedef Selector<T, R extends Comparable<Object?>> = R Function(T);
 
+/// Fluent query builder for syncable entities.
 class SynqQuery<T extends SyncableEntity> {
+  /// Creates a query with a fetcher and optional watcher.
   SynqQuery({
     required Future<List<T>> Function() fetcher,
     Stream<List<T>> Function()? watcher,
@@ -20,10 +25,12 @@ class SynqQuery<T extends SyncableEntity> {
   int? _limit;
   final int _skip = 0;
 
+  /// Adds a filter predicate to the query.
   void where(Predicate<T> predicate) {
     _predicates.add(predicate);
   }
 
+  /// Specifies ordering for query results.
   void orderBy<R extends Comparable<Object?>>(
     Selector<T, R> selector, {
     bool descending = false,
@@ -32,6 +39,7 @@ class SynqQuery<T extends SyncableEntity> {
     _descending = descending;
   }
 
+  /// Executes the query and returns the results.
   Future<List<T>> execute() async {
     var results = await _fetcher();
     for (final predicate in _predicates) {
@@ -54,6 +62,7 @@ class SynqQuery<T extends SyncableEntity> {
     return results;
   }
 
+  /// Returns a stream of query results that updates as data changes.
   Stream<List<T>> watch() {
     final baseStream = _watcher?.call();
     if (baseStream == null) {

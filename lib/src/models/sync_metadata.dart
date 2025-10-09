@@ -21,22 +21,22 @@ class SyncMetadata {
       customMetadata: json['customMetadata'] as Map<String, dynamic>?,
     );
   }
-  
+
   /// User ID for this metadata.
   final String userId;
-  
+
   /// Timestamp of last synchronization.
   final DateTime lastSyncTime;
-  
+
   /// Hash of the data for integrity checking.
   final String dataHash;
-  
+
   /// Number of items in the dataset.
   final int itemCount;
-  
+
   /// Optional device identifier.
   final String? deviceId;
-  
+
   /// Custom metadata fields.
   final Map<String, dynamic>? customMetadata;
 

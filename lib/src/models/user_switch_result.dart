@@ -41,22 +41,22 @@ class UserSwitchResult {
       errorMessage: errorMessage,
     );
   }
-  
+
   /// Whether the switch was successful.
   final bool success;
-  
+
   /// Previous user ID.
   final String? previousUserId;
-  
+
   /// New user ID.
   final String newUserId;
-  
+
   /// Number of unsynced operations handled during switch.
   final int unsyncedOperationsHandled;
-  
+
   /// Conflicts encountered during the switch.
   final List<SyncableEntity>? conflicts;
-  
+
   /// Error message if the switch failed.
   final String? errorMessage;
 }

@@ -23,7 +23,16 @@ import 'package:synq_manager/src/utils/connectivity_checker.dart';
 import 'package:synq_manager/src/utils/hash_generator.dart';
 import 'package:synq_manager/src/utils/logger.dart';
 
+/// Engine responsible for executing synchronization operations
+/// between local and remote data sources.
+///
+/// Manages the full sync lifecycle including conflict
+/// detection, resolution, retry logic,
+/// and progress tracking. Coordinates with adapters,
+/// resolvers, and middleware to ensure
+/// reliable bidirectional data synchronization.
 class SyncEngine<T extends SyncableEntity> {
+  /// Creates a new sync engine with the specified dependencies.
   SyncEngine({
     required this.localAdapter,
     required this.remoteAdapter,
@@ -38,16 +47,37 @@ class SyncEngine<T extends SyncableEntity> {
     required this.middlewares,
   });
 
+  /// Adapter for local data storage operations.
   final LocalAdapter<T> localAdapter;
+
+  /// Adapter for remote data source operations.
   final RemoteAdapter<T> remoteAdapter;
+
+  /// Resolver for handling sync conflicts.
   final SyncConflictResolver<T> conflictResolver;
+
+  /// Manager for queued sync operations.
   final QueueManager<T> queueManager;
+
+  /// Detector for identifying conflicts.
   final ConflictDetector<T> conflictDetector;
+
+  /// Logger for sync operations.
   final SynqLogger logger;
+
+  /// Configuration for sync behavior.
   final SynqConfig config;
+
+  /// Checker for network connectivity.
   final ConnectivityChecker connectivityChecker;
+
+  /// Controller for sync events.
   final StreamController<SyncEvent<T>> eventController;
+
+  /// Subject for sync status updates.
   final BehaviorSubject<SyncStatusSnapshot> statusSubject;
+
+  /// Middleware chain for sync operations.
   final List<SynqMiddleware<T>> middlewares;
 
   final Set<String> _activeSyncs = <String>{};
@@ -57,6 +87,12 @@ class SyncEngine<T extends SyncableEntity> {
   final Map<String, SyncStatusSnapshot> _latestSnapshots = {};
   final HashGenerator _hashGenerator = const HashGenerator();
 
+  /// Synchronizes data for the specified user between local and remote sources.
+  ///
+  /// Executes the full sync cycle: push local changes, pull remote changes,
+  /// detect and resolve conflicts. Can be
+  /// forced to run regardless of conditions.
+  /// Honors timeout and cancellation. Returns a detailed result summary.
   Future<SyncResult> synchronize(
     String userId, {
     bool force = false,
@@ -319,6 +355,10 @@ class SyncEngine<T extends SyncableEntity> {
     }
   }
 
+  /// Pauses the synchronization process for a specific user.
+  ///
+  /// While paused, no new sync operations will be executed for the user.
+  /// Returns a future that completes when the sync is resumed.
   Future<void> pause(String userId) async {
     if (_pausedUsers.contains(userId)) return;
     _pausedUsers.add(userId);
@@ -336,6 +376,9 @@ class SyncEngine<T extends SyncableEntity> {
     await completer.future;
   }
 
+  /// Resumes a paused synchronization process for a specific user.
+  ///
+  /// Completes the pause future and allows sync operations to continue.
   void resume(String userId) {
     if (!_pausedUsers.remove(userId)) return;
     _pauseCompleters.remove(userId)?.complete();
@@ -349,11 +392,18 @@ class SyncEngine<T extends SyncableEntity> {
     );
   }
 
+  /// Cancels an ongoing synchronization process for a specific user.
+  ///
+  /// Sets the cancellation flag and completes any pending pause operations.
   void cancel(String userId) {
     _cancelledUsers.add(userId);
     _pauseCompleters.remove(userId)?.complete();
   }
 
+  /// Gets the current sync status snapshot for a specific user.
+  ///
+  /// Returns the latest cached snapshot or creates a
+  /// new idle snapshot if none exists.
   Future<SyncStatusSnapshot> getSnapshot(String userId) async {
     return _latestSnapshots[userId] ??
         SyncStatusSnapshot(

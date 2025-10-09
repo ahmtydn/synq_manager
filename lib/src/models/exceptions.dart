@@ -5,7 +5,7 @@ abstract class SynqException implements Exception {
 
   /// The error message.
   final String message;
-  
+
   /// Optional stack trace.
   final StackTrace? stackTrace;
 
@@ -51,7 +51,7 @@ class UserSwitchException extends SynqException {
 
   /// Previous user ID.
   final String? oldUserId;
-  
+
   /// New user ID.
   final String newUserId;
 }

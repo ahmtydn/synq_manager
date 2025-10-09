@@ -17,34 +17,34 @@ class SyncStatusSnapshot {
     this.lastStartedAt,
     this.lastCompletedAt,
   });
-  
+
   /// User ID for this snapshot.
   final String userId;
-  
+
   /// Current sync status.
   final SyncStatus status;
-  
+
   /// Number of operations waiting to sync.
   final int pendingOperations;
-  
+
   /// Number of completed operations.
   final int completedOperations;
-  
+
   /// Number of failed operations.
   final int failedOperations;
-  
+
   /// Progress percentage (0.0 to 1.0).
   final double progress;
-  
+
   /// When the last sync started.
   final DateTime? lastStartedAt;
-  
+
   /// When the last sync completed.
   final DateTime? lastCompletedAt;
 
   /// Whether there is unsynced data.
   bool get hasUnsyncedData => pendingOperations > 0;
-  
+
   /// Whether there are any failures.
   bool get hasFailures => failedOperations > 0;
 
@@ -73,11 +73,22 @@ class SyncStatusSnapshot {
 
 /// High level states for synchronization.
 enum SyncStatus {
+  /// No sync currently running.
   idle,
+
+  /// Sync is actively running.
   syncing,
+
+  /// Sync was paused by user.
   paused,
+
+  /// Sync was cancelled by user.
   cancelled,
+
+  /// Sync failed with errors.
   failed,
+
+  /// Sync completed successfully.
   completed,
 }
 
@@ -91,19 +102,19 @@ class SyncOptions {
     this.overrideBatchSize,
     this.timeout,
   });
-  
+
   /// Whether to include delete operations.
   final bool includeDeletes;
-  
+
   /// Whether to automatically resolve conflicts.
   final bool resolveConflicts;
-  
+
   /// Whether to force a full sync.
   final bool forceFullSync;
-  
+
   /// Custom batch size override.
   final int? overrideBatchSize;
-  
+
   /// Timeout for sync operations.
   final Duration? timeout;
 }
@@ -122,28 +133,28 @@ class SyncResult {
     this.errors = const [],
     this.wasCancelled = false,
   });
-  
+
   /// User ID for this sync result.
   final String userId;
-  
+
   /// Number of successfully synced operations.
   final int syncedCount;
-  
+
   /// Number of failed operations.
   final int failedCount;
-  
+
   /// Number of conflicts that were resolved.
   final int conflictsResolved;
-  
+
   /// Operations still pending.
   final List<SyncOperation<SyncableEntity>> pendingOperations;
-  
+
   /// Duration of the sync operation.
   final Duration duration;
-  
+
   /// List of errors encountered.
   final List<Object> errors;
-  
+
   /// Whether the sync was cancelled.
   final bool wasCancelled;
 
@@ -164,28 +175,28 @@ class SyncStatistics {
     this.averageDuration = Duration.zero,
     this.totalSyncDuration = Duration.zero,
   });
-  
+
   /// Total number of sync operations.
   final int totalSyncs;
-  
+
   /// Number of successful syncs.
   final int successfulSyncs;
-  
+
   /// Number of failed syncs.
   final int failedSyncs;
-  
+
   /// Number of conflicts detected.
   final int conflictsDetected;
-  
+
   /// Number of automatically resolved conflicts.
   final int conflictsAutoResolved;
-  
+
   /// Number of user-resolved conflicts.
   final int conflictsUserResolved;
-  
+
   /// Average duration of sync operations.
   final Duration averageDuration;
-  
+
   /// Total duration of all syncs.
   final Duration totalSyncDuration;
 
@@ -222,10 +233,10 @@ class SyncConflictSummary<T extends SyncableEntity> {
     required this.resolution,
     required this.entityId,
   });
-  
+
   /// How the conflict was resolved.
   final ConflictResolution<T> resolution;
-  
+
   /// ID of the entity involved in the conflict.
   final String entityId;
 }

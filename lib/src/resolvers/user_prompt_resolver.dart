@@ -3,9 +3,13 @@ import 'package:synq_manager/src/models/conflict_resolution.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
 import 'package:synq_manager/src/resolvers/sync_conflict_resolver.dart';
 
+/// Resolves conflicts by prompting the user to choose.
 class UserPromptResolver<T extends SyncableEntity>
     extends SyncConflictResolver<T> {
+  /// Creates a user prompt resolver with a custom prompt function.
   UserPromptResolver({required this.promptUser});
+
+  /// Function that prompts the user to choose a resolution strategy.
   final Future<ResolutionStrategy> Function(
     ConflictContext context,
     T? local,

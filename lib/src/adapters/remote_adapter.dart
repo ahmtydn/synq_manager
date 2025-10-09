@@ -39,24 +39,37 @@ abstract class RemoteAdapter<T extends SyncableEntity> {
 
 /// Result of a batch sync invocation that captures successes and failures.
 class BatchSyncResult<T extends SyncableEntity> {
+  /// Creates a batch sync result.
   const BatchSyncResult({
     required this.successful,
     required this.failed,
     required this.totalProcessed,
     required this.duration,
   });
+
+  /// Successfully synced items.
   final List<T> successful;
+
+  /// Failed operations.
   final List<SyncOperationFailure<T>> failed;
+
+  /// Total number of operations processed.
   final int totalProcessed;
+
+  /// Duration of the batch operation.
   final Duration duration;
 
+  /// Whether any operations failed.
   bool get hasFailures => failed.isNotEmpty;
+
+  /// Success rate as a fraction (0.0 to 1.0).
   double get successRate =>
       totalProcessed == 0 ? 0 : successful.length / totalProcessed;
 }
 
 /// Details about a failed sync operation.
 class SyncOperationFailure<T extends SyncableEntity> {
+  /// Creates a sync operation failure.
   const SyncOperationFailure({
     required this.operation,
     required this.error,
@@ -64,9 +77,19 @@ class SyncOperationFailure<T extends SyncableEntity> {
     this.conflictResolution,
     this.conflictContext,
   });
+
+  /// The operation that failed.
   final SyncOperation<T> operation;
+
+  /// The error that occurred.
   final Object error;
+
+  /// Whether the operation can be retried.
   final bool canRetry;
+
+  /// Resolution if the failure was due to a conflict.
   final ConflictResolution<T>? conflictResolution;
+
+  /// Context if the failure was due to a conflict.
   final ConflictContext? conflictContext;
 }
