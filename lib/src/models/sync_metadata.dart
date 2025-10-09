@@ -1,5 +1,6 @@
 /// Metadata describing the synchronization state for a specific user.
 class SyncMetadata {
+  /// Creates sync metadata.
   const SyncMetadata({
     required this.userId,
     required this.lastSyncTime,
@@ -9,6 +10,7 @@ class SyncMetadata {
     this.customMetadata,
   });
 
+  /// Creates SyncMetadata from JSON.
   factory SyncMetadata.fromJson(Map<String, dynamic> json) {
     return SyncMetadata(
       userId: json['userId'] as String,
@@ -19,13 +21,26 @@ class SyncMetadata {
       customMetadata: json['customMetadata'] as Map<String, dynamic>?,
     );
   }
+  
+  /// User ID for this metadata.
   final String userId;
+  
+  /// Timestamp of last synchronization.
   final DateTime lastSyncTime;
+  
+  /// Hash of the data for integrity checking.
   final String dataHash;
+  
+  /// Number of items in the dataset.
   final int itemCount;
+  
+  /// Optional device identifier.
   final String? deviceId;
+  
+  /// Custom metadata fields.
   final Map<String, dynamic>? customMetadata;
 
+  /// Creates a copy with modified fields.
   SyncMetadata copyWith({
     DateTime? lastSyncTime,
     String? dataHash,
@@ -43,6 +58,7 @@ class SyncMetadata {
     );
   }
 
+  /// Converts to JSON format.
   Map<String, dynamic> toJson() => {
         'userId': userId,
         'lastSyncTime': lastSyncTime.toIso8601String(),

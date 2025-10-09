@@ -2,7 +2,11 @@ import 'package:synq_manager/src/models/conflict_context.dart';
 import 'package:synq_manager/src/models/sync_metadata.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
 
+/// Detects conflicts between local and remote data.
 class ConflictDetector<T extends SyncableEntity> {
+  /// Detects conflicts between local and remote items.
+  ///
+  /// Returns a [ConflictContext] if a conflict is detected, null otherwise.
   ConflictContext? detect({
     required T? localItem,
     required T? remoteItem,

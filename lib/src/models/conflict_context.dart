@@ -10,6 +10,7 @@ enum ConflictType {
 
 /// Context information describing a synchronization conflict.
 class ConflictContext {
+  /// Creates a conflict context.
   const ConflictContext({
     required this.userId,
     required this.entityId,
@@ -18,10 +19,22 @@ class ConflictContext {
     this.localMetadata,
     this.remoteMetadata,
   });
+  
+  /// User ID associated with the conflict.
   final String userId;
+  
+  /// Entity ID involved in the conflict.
   final String entityId;
+  
+  /// Type of conflict detected.
   final ConflictType type;
+  
+  /// Metadata from the local version.
   final SyncMetadata? localMetadata;
+  
+  /// Metadata from the remote version.
   final SyncMetadata? remoteMetadata;
+  
+  /// Timestamp when the conflict was detected.
   final DateTime detectedAt;
 }

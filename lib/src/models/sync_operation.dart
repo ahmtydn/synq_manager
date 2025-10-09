@@ -10,6 +10,7 @@ enum SyncOperationStatus { pending, inProgress, completed, failed }
 /// Representation of a local operation that needs to be synchronized remotely.
 @immutable
 class SyncOperation<T extends SyncableEntity> {
+  /// Creates a sync operation.
   const SyncOperation({
     required this.id,
     required this.userId,
@@ -20,15 +21,32 @@ class SyncOperation<T extends SyncableEntity> {
     this.retryCount = 0,
     this.status = SyncOperationStatus.pending,
   });
+
+  /// Unique identifier for the operation.
   final String id;
+
+  /// ID of the user who initiated the operation.
   final String userId;
+
+  /// Type of sync operation (create, update, delete).
   final SyncOperationType type;
+
+  /// The entity data (null for delete operations).
   final T? data;
+
+  /// ID of the entity being synchronized.
   final String entityId;
+
+  /// Timestamp when the operation was created.
   final DateTime timestamp;
+
+  /// Number of retry attempts.
   final int retryCount;
+
+  /// Current status of the operation.
   final SyncOperationStatus status;
 
+  /// Creates a copy with modified fields.
   SyncOperation<T> copyWith({
     String? id,
     String? userId,
@@ -51,6 +69,7 @@ class SyncOperation<T extends SyncableEntity> {
     );
   }
 
+  /// Converts the operation to JSON format.
   Map<String, dynamic> toJson(Map<String, dynamic> Function(T)? serializer) {
     return {
       'id': id,
@@ -64,6 +83,7 @@ class SyncOperation<T extends SyncableEntity> {
     };
   }
 
+  /// Creates a SyncOperation from JSON data.
   static SyncOperation<T> fromJson<T extends SyncableEntity>(
     Map<String, dynamic> json,
     T? Function(Map<String, dynamic>)? deserializer,
