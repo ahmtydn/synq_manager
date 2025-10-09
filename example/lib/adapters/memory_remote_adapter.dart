@@ -7,12 +7,7 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
   MemoryRemoteAdapter({required this.fromJson});
   final Map<String, Map<String, T>> _remoteStorage = {};
   final T Function(Map<String, dynamic>) fromJson;
-  bool _isConnected = true;
-
-  // Helper method for testing connectivity
-  void setConnected(bool connected) {
-    _isConnected = connected;
-  }
+  final bool _isConnected = true;
 
   @override
   Future<List<T>> fetchAll(String userId) async {
@@ -95,7 +90,7 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
           case SyncOperationType.delete:
             _remoteStorage[userId]?.remove(op.entityId);
         }
-      } catch (e) {
+      } on Exception catch (e) {
         failed.add(
           SyncOperationFailure(
             operation: op,

@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:synq_manager/synq_manager.dart';
 
+@immutable
 class Task implements SyncableEntity {
-  Task({
+  const Task({
     required this.id,
     required this.userId,
     required this.title,

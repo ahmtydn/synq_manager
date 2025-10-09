@@ -195,8 +195,8 @@ void main() {
 
       await manager.save(entity, 'user1');
 
-      remoteAdapter.setConnected(false);
-      connectivityChecker.setConnected(false);
+      remoteAdapter.connected = false;
+      connectivityChecker.connected = false;
 
       expect(
         () => manager.sync('user1'),

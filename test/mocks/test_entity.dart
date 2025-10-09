@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
 
+@immutable
 class TestEntity implements SyncableEntity {
   const TestEntity({
     required this.id,

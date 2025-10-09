@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:synq_manager/src/models/syncable_entity.dart';
 
-typedef _Predicate<T> = bool Function(T);
-typedef _Selector<T, R extends Comparable<Object?>> = R Function(T);
+typedef Predicate<T> = bool Function(T);
+typedef Selector<T, R extends Comparable<Object?>> = R Function(T);
 
 class SynqQuery<T extends SyncableEntity> {
   SynqQuery({
@@ -14,31 +14,22 @@ class SynqQuery<T extends SyncableEntity> {
 
   final Future<List<T>> Function() _fetcher;
   final Stream<List<T>> Function()? _watcher;
-  final List<_Predicate<T>> _predicates = [];
-  _Selector<T, Comparable<Object?>>? _ordering;
+  final List<Predicate<T>> _predicates = [];
+  Selector<T, Comparable<Object?>>? _ordering;
   bool _descending = false;
   int? _limit;
-  int _skip = 0;
+  final int _skip = 0;
 
-  SynqQuery<T> where(_Predicate<T> predicate) {
+  void where(Predicate<T> predicate) {
     _predicates.add(predicate);
-    return this;
   }
 
   void orderBy<R extends Comparable<Object?>>(
-    _Selector<T, R> selector, {
+    Selector<T, R> selector, {
     bool descending = false,
   }) {
     _ordering = (item) => selector(item);
     _descending = descending;
-  }
-
-  void limit(int count) {
-    _limit = count;
-  }
-
-  void skip(int count) {
-    _skip = count;
   }
 
   Future<List<T>> execute() async {

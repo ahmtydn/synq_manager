@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:synq_manager/synq_manager.dart';
 import 'package:synq_manager_example/adapters/memory_local_adapter.dart';
@@ -43,7 +45,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeManager();
+    unawaited(_initializeManager());
   }
 
   Future<void> _initializeManager() async {
@@ -72,7 +74,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
     // Listen to events
     _manager.onDataChange.listen((event) {
       print('Data changed: ${event.changeType} - ${event.data.title}');
-      _loadTasks();
+      unawaited(_loadTasks());
     });
 
     _manager.onSyncProgress.listen((event) {
@@ -82,6 +84,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
     });
 
     _manager.onConflict.listen((event) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Conflict detected: ${event.context.type}'),
@@ -164,7 +167,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
           );
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
       setState(() {
         _syncStatus = 'Sync failed: $e';
       });
@@ -179,38 +182,40 @@ class _TaskListScreenState extends State<TaskListScreen> {
   void _showAddTaskDialog() {
     final controller = TextEditingController();
 
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Task'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: 'Task title',
-          ),
-          autofocus: true,
-          onSubmitted: (value) {
-            if (value.isNotEmpty) {
-              _addTask(value);
-              Navigator.pop(context);
-            }
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (controller.text.isNotEmpty) {
-                _addTask(controller.text);
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Add Task'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: 'Task title',
+            ),
+            autofocus: true,
+            onSubmitted: (value) {
+              if (value.isNotEmpty) {
+                unawaited(_addTask(value));
                 Navigator.pop(context);
               }
             },
-            child: const Text('Add'),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (controller.text.isNotEmpty) {
+                  unawaited(_addTask(controller.text));
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -218,7 +223,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
   @override
   void dispose() {
     _manager.stopAutoSync(userId: _currentUserId);
-    _manager.dispose();
+    unawaited(_manager.dispose());
     super.dispose();
   }
 

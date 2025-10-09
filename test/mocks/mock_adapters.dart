@@ -81,29 +81,28 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
 class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
   final Map<String, Map<String, T>> _remoteStorage = {};
   final Map<String, SyncMetadata> _remoteMetadata = {};
-  bool _connected = true;
+  bool connected = true;
   final List<String> _failedIds = [];
 
-  void setConnected(bool connected) => _connected = connected;
   void setFailedIds(List<String> ids) => _failedIds
     ..clear()
     ..addAll(ids);
 
   @override
   Future<List<T>> fetchAll(String userId) async {
-    if (!_connected) throw Exception('No connection');
+    if (!connected) throw Exception('No connection');
     return _remoteStorage[userId]?.values.toList() ?? [];
   }
 
   @override
   Future<T?> fetchById(String id, String userId) async {
-    if (!_connected) throw Exception('No connection');
+    if (!connected) throw Exception('No connection');
     return _remoteStorage[userId]?[id];
   }
 
   @override
   Future<T> push(T item, String userId) async {
-    if (!_connected) throw Exception('No connection');
+    if (!connected) throw Exception('No connection');
     if (_failedIds.contains(item.id)) {
       throw Exception('Simulated push failure for ${item.id}');
     }
@@ -113,7 +112,7 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
 
   @override
   Future<void> deleteRemote(String id, String userId) async {
-    if (!_connected) throw Exception('No connection');
+    if (!connected) throw Exception('No connection');
     _remoteStorage[userId]?.remove(id);
   }
 
@@ -122,7 +121,7 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
     List<SyncOperation<T>> operations,
     String userId,
   ) async {
-    if (!_connected) throw Exception('No connection');
+    if (!connected) throw Exception('No connection');
 
     final stopwatch = Stopwatch()..start();
     final successful = <T>[];
@@ -144,7 +143,7 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
           case SyncOperationType.delete:
             await deleteRemote(op.entityId, userId);
         }
-      } catch (e) {
+      } on Exception catch (e) {
         failed.add(
           SyncOperationFailure(
             operation: op,
@@ -170,7 +169,7 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
   }
 
   @override
-  Future<bool> isConnected() async => _connected;
+  Future<bool> isConnected() async => connected;
 
   @override
   Stream<RemoteChangeEvent<T>>? subscribeToChanges(String userId) => null;
