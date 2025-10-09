@@ -1,21 +1,36 @@
-/// SynqManager - A powerful synchronization manager for Flutter apps
-///
-/// This library provides secure local storage with real-time state management,
-/// background cloud synchronization, and conflict resolution capabilities.
-library synq_manager;
-
-export 'package:hive_plus_secure/hive_plus_secure.dart'
-    show DocumentSerializable;
-
-export 'src/core/synq_listeners.dart';
+export 'src/adapters/local_adapter.dart';
+export 'src/adapters/remote_adapter.dart';
+export 'src/config/synq_config.dart';
+export 'src/core/conflict_detector.dart';
+export 'src/core/queue_manager.dart';
+export 'src/core/sync_engine.dart';
 export 'src/core/synq_manager.dart';
-export 'src/events/event_types.dart';
+export 'src/events/conflict_event.dart';
+export 'src/events/data_change_event.dart';
+export 'src/events/sync_event.dart';
+export 'src/events/user_switch_event.dart';
+export 'src/health/health_check.dart';
+export 'src/metrics/synq_metrics.dart';
+export 'src/middleware/synq_middleware.dart';
+export 'src/models/conflict_context.dart';
 export 'src/models/conflict_resolution.dart';
-export 'src/models/sync_config.dart';
-export 'src/models/sync_data.dart';
-export 'src/models/sync_event.dart';
+export 'src/models/error_recovery.dart';
+export 'src/models/exceptions.dart';
+export 'src/models/remote_change_event.dart';
+export 'src/models/sync_metadata.dart';
+export 'src/models/sync_operation.dart';
 export 'src/models/sync_result.dart';
-export 'src/models/sync_stats.dart';
-export 'src/models/synq_callbacks.dart';
-export 'src/services/storage_service.dart';
-export 'src/services/sync_service.dart';
+export 'src/models/syncable_entity.dart';
+export 'src/models/user_switch_result.dart';
+export 'src/query/index_config.dart';
+export 'src/query/pagination.dart';
+export 'src/query/synq_query.dart';
+export 'src/resolvers/last_write_wins_resolver.dart';
+export 'src/resolvers/local_priority_resolver.dart';
+export 'src/resolvers/merge_resolver.dart';
+export 'src/resolvers/remote_priority_resolver.dart';
+export 'src/resolvers/sync_conflict_resolver.dart';
+export 'src/resolvers/user_prompt_resolver.dart';
+export 'src/utils/connectivity_checker.dart';
+export 'src/utils/hash_generator.dart';
+export 'src/utils/logger.dart';

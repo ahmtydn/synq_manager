@@ -1,184 +1,171 @@
-# SynqManager Notes Demo
+# SynqManager Example
 
-A comprehensive Flutter example demonstrating the **SynqManager** package capabilities for local storage, cloud synchronization, and conflict resolution.
+A comprehensive example demonstrating how to use SynqManager for offline-first task management.
 
-## Features
+## Features Demonstrated
 
-This example app demonstrates:
+- ✅ **CRUD Operations** — Create, read, update, and delete tasks
+- ✅ **Automatic Sync** — Background synchronization every 30 seconds
+- ✅ **Manual Sync** — Trigger sync on-demand with sync button
+- ✅ **Real-Time Updates** — UI updates automatically on data changes
+- ✅ **Offline Support** — Works without network connection
+- ✅ **Sync Status** — Visual indicators for pending operations
+- ✅ **Conflict Resolution** — Automatic conflict handling with last-write-wins
 
-- ✅ **Local Storage**: Persistent storage with encryption
-- ✅ **Real-time Events**: Live updates for data changes
-- ✅ **Cloud Synchronization**: Mock cloud sync with retry logic
-- ✅ **Conflict Resolution**: Automatic conflict handling
-- ✅ **Background Sync**: Automatic synchronization in background
-- ✅ **Error Handling**: Graceful error management
-- ✅ **CRUD Operations**: Create, Read, Update, Delete operations
-- ✅ **Data Persistence**: Survives app restarts
+## Project Structure
 
-## What's Included
-
-### Models
-- **Note**: A sample data model with JSON serialization
-- **NoteColor**: Enum for note color themes
-
-### Key Features Demonstrated
-1. **SynqManager Setup**: Proper initialization with configuration
-2. **Event Listening**: Real-time sync status and data change events
-3. **Local Operations**: CRUD operations on local storage
-4. **Cloud Integration**: Mock cloud sync and fetch functions
-5. **UI Integration**: Flutter UI with Provider state management
-
-### App Functionality
-- Create, edit, and delete notes
-- Color-coded notes with importance flags
-- Manual sync trigger
-- Real-time sync status display
-- Automatic background synchronization
-- Persistent data storage
-
-## Getting Started
-
-### Prerequisites
-- Flutter SDK (>=3.0.0)
-- Dart SDK (>=3.0.0)
-
-### Using Custom Data Models
-
-This example uses `Map<String, dynamic>` as the data type, which doesn't require fromJson/toJson functions. However, if you want to use custom data models like the `Note` class, you would initialize SynqManager like this:
-
-```dart
-_synqManager = await SynqManager.getInstance<Note>(
-  instanceName: 'notes_manager',
-  config: const SyncConfig(
-    syncInterval: Duration(seconds: 30),
-    encryptionKey: 'example_encryption_key_32_chars!',
-    enableBackgroundSync: true,
-    enableConflictResolution: true,
-  ),
-  cloudSyncFunction: _mockCloudSync,
-  cloudFetchFunction: _mockCloudFetch,
-  fromJson: Note.fromJson, // Add this for custom objects
-  toJson: (note) => note.toJson(), // Add this for custom objects
-);
+```
+example/
+├── lib/
+│   ├── main.dart                           # Main app with TaskListScreen
+│   ├── models/
+│   │   └── task.dart                       # Task entity implementation
+│   └── adapters/
+│       ├── memory_local_adapter.dart       # In-memory local storage
+│       └── memory_remote_adapter.dart      # In-memory remote storage
+├── pubspec.yaml
+└── README.md
 ```
 
-### Installation
+## How to Run
 
 1. Navigate to the example directory:
-```bash
-cd example
-```
+   ```bash
+   cd example
+   ```
 
-2. Install dependencies:
-```bash
-flutter pub get
-```
+2. Get dependencies:
+   ```bash
+   flutter pub get
+   ```
 
-3. Generate JSON serialization code:
-```bash
-dart run build_runner build
-```
+3. Run the app:
+   ```bash
+   flutter run
+   ```
 
-4. Run the app:
-```bash
-flutter run
-```
+## Code Highlights
 
-## How It Works
+### 1. Entity Definition
 
-### SynqManager Configuration
+The `Task` class implements `SyncableEntity`:
+
 ```dart
-_synqManager = await SynqManager.getInstance<Map<String, dynamic>>(
-  instanceName: 'notes_manager',
-  config: const SyncConfig(
-    syncInterval: Duration(seconds: 30),
-    encryptionKey: 'example_encryption_key_32_chars!',
-    enableBackgroundSync: true,
-    enableConflictResolution: true,
+class Task implements SyncableEntity {
+  final String id;
+  final String userId;
+  final String title;
+  final bool completed;
+  final DateTime modifiedAt;
+  final DateTime createdAt;
+  final String version;
+  final bool isDeleted;
+  
+  // Implement toJson, fromJson, copyWith...
+}
+```
+
+### 2. Manager Initialization
+
+```dart
+final manager = SynqManager<Task>(
+  localAdapter: MemoryLocalAdapter<Task>(fromJson: Task.fromJson),
+  remoteAdapter: MemoryRemoteAdapter<Task>(fromJson: Task.fromJson),
+  synqConfig: SynqConfig(
+    autoSyncInterval: const Duration(seconds: 30),
+    enableLogging: true,
+    defaultConflictResolver: LastWriteWinsResolver<Task>(),
   ),
-  cloudSyncFunction: _mockCloudSync,
-  cloudFetchFunction: _mockCloudFetch,
 );
+
+await manager.initialize();
+manager.startAutoSync(userId);
 ```
 
-### Event Handling
+### 3. Event Handling
+
 ```dart
-_eventSubscription = _synqManager!.events.listen(_handleSynqEvent);
+// Listen to data changes
+manager.onDataChange.listen((event) {
+  print('${event.changeType}: ${event.data.title}');
+  _loadTasks(); // Refresh UI
+});
+
+// Listen to sync progress
+manager.onSyncProgress.listen((event) {
+  setState(() {
+    _syncStatus = 'Syncing: ${event.completed}/${event.total}';
+  });
+});
+
+// Listen to conflicts
+manager.onConflict.listen((event) {
+  showSnackBar('Conflict detected: ${event.context.type}');
+});
 ```
 
-### CRUD Operations
+### 4. CRUD Operations
+
 ```dart
 // Create
-await _synqManager!.put(note.id, note.toJson());
+await manager.save(newTask, userId);
 
 // Read
-final notesData = await _synqManager!.getAll();
+final tasks = await manager.getAll(userId);
+final task = await manager.getById(taskId, userId);
 
 // Update
-await _synqManager!.update(note.id, updatedNote.toJson());
+await manager.save(updatedTask, userId);
 
 // Delete
-await _synqManager!.delete(note.id);
+await manager.delete(taskId, userId);
 ```
 
-### Cloud Integration
-The example includes mock cloud functions that simulate:
-- Network delays
-- Occasional network errors
-- Successful sync operations
-- Data fetching from remote server
+### 5. Synchronization
 
-In a real application, replace these with actual API calls to your backend service.
+```dart
+// Manual sync
+final result = await manager.sync(userId);
+print('Synced: ${result.syncedCount}, Failed: ${result.failedCount}');
 
-## Key Code Files
+// Auto-sync
+manager.startAutoSync(userId, interval: Duration(seconds: 30));
 
-- `lib/main.dart` - Main app with SynqManager integration
-- `lib/models/note.dart` - Note data model with JSON serialization
-- `lib/models/note.g.dart` - Generated JSON serialization code
-
-## Architecture
-
-```
-┌─────────────────────┐
-│    Flutter UI       │
-├─────────────────────┤
-│    SynqManager      │
-├─────────────────────┤
-│  Storage Service    │  ←→  │  Sync Service  │
-├─────────────────────┤      ├────────────────┤
-│   Local Storage     │      │  Cloud Backend │
-│   (Encrypted)       │      │   (Mock API)   │
-└─────────────────────┘      └────────────────┘
+// Stop auto-sync
+manager.stopAutoSync(userId: userId);
 ```
 
-## Learning Resources
+## Adapters
 
-- **SynqManager Documentation**: See the main package README
-- **Flutter Provider**: [State management pattern](https://pub.dev/packages/provider)
-- **JSON Serialization**: [Flutter JSON guide](https://docs.flutter.dev/data-and-backend/json)
+### Memory Local Adapter
+
+The example uses an in-memory implementation for simplicity. In production:
+
+- Use **Hive** for lightweight local storage
+- Use **SQLite** for relational data
+- Use **SharedPreferences** for simple key-value storage
+
+### Memory Remote Adapter
+
+The example simulates a remote server in-memory. In production:
+
+- Use **Firebase Firestore** for real-time sync
+- Use **REST API** with HTTP client
+- Use **GraphQL** for flexible queries
 
 ## Next Steps
 
-To adapt this example for your own app:
+To adapt this example for production:
 
-1. Replace the `Note` model with your own data structure
-2. Implement real cloud sync functions with your backend API
-3. Customize the UI to match your app's design
-4. Add authentication and user-specific data handling
-5. Configure appropriate sync intervals and conflict resolution strategies
+1. **Replace adapters** with real storage implementations
+2. **Add authentication** for user management
+3. **Implement custom conflict resolvers** for complex merge logic
+4. **Add middleware** for logging, analytics, or validation
+5. **Configure retry strategies** for network failures
+6. **Add error handling** and user feedback
 
-## Troubleshooting
+## Learn More
 
-### Build Issues
-- Ensure `dart run build_runner build` has been executed
-- Check that all dependencies are properly installed
-
-### Sync Issues
-- Verify cloud functions are properly implemented
-- Check network connectivity
-- Review error messages in the status bar
-
-### Performance
-- Adjust sync intervals based on your use case
-- Consider batch sizes for large datasets
-- Monitor memory usage with large numbers of items
+- [Full Documentation](../DOCUMENTATION.md)
+- [API Reference](../README.md)
+- [SynqManager Repository](https://github.com/ahmtydn/synq_manager)

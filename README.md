@@ -1,49 +1,75 @@
-# SynQ Manager
+# 🔄 SynqManager
 
 [![pub package](https://img.shields.io/pub/v/synq_manager.svg)](https://pub.dev/packages/synq_manager)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Flutter](https://img.shields.io/badge/Flutter-3.0%2B-blue.svg)](https://flutter.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub stars](https://img.shields.io/github/stars/ahmtydn/synq_manager.svg?style=social&label=Star)](https://github.com/ahmtydn/synq_manager)
 
-A powerful synchronization manager for Flutter apps with secure local storage, real-time state management, background cloud sync capabilities, and **Socket.io-style event handling**.
+A powerful **offline-first data synchronization engine** for Flutter and Dart applications. Build production-ready apps with **intelligent conflict resolution**, **real-time sync**, **multi-user support**, and **enterprise-grade reliability** - all with a simple, intuitive API.
+
+---
+
+## 📚 Table of Contents
+
+- [✨ Features](#-features)
+- [🚀 Quick Start](#-quick-start)
+- [📖 Core Concepts](#-core-concepts)
+- [🔧 Configuration](#-configuration)
+- [🗄️ Adapters](#️-adapters)
+- [⚔️ Conflict Resolution](#️-conflict-resolution)
+- [📊 Event Streams](#-event-streams)
+- [🎯 Advanced Features](#-advanced-features)
+- [🧪 Testing](#-testing)
+- [📝 Best Practices](#-best-practices)
+- [🛠️ Development](#️-development)
+- [🤝 Contributing](#-contributing)
+- [📄 License](#-license)
+
+---
 
 ## ✨ Features
 
-🎯 **Simplified Socket.io Style Events**: Clean, intuitive event handling with only essential callbacks
-- `onEvent` - Universal event listener for all events
-- `onInit` - Initialization with all existing data
-- `onCreate` - New item creation events
-- `onUpdate` - Item modification events  
-- `onDelete` - Item deletion events
-- `onError` - Error handling
+### 🔄 **Offline-First Architecture**
+- **Seamless Offline Operation** - Full CRUD functionality without network
+- **Automatic Queue Management** - Operations queued and synced when online
+- **Smart Retry Logic** - Configurable retry strategies with exponential backoff
 
--  **Real-time Synchronization**: Automatic cloud sync with configurable intervals
-- 📱 **Background Sync**: Uses WorkManager for background synchronization when app is closed
-- 🔐 **Secure Storage**: Encrypted local storage with Hive Plus Secure
-- ⚔️ **Conflict Resolution**: Intelligent conflict handling with multiple resolution strategies
-- 🌐 **Connectivity Aware**: Automatic sync when network becomes available
-- 🎯 **Type-safe API**: Full TypeScript-like generics support for type safety
-- ⚡ **High Performance**: Optimized for mobile with single-instance listeners
-- 🔧 **Customizable**: Flexible configuration for different use cases
-- 📊 **Event-driven**: Real-time event streams for UI updates
-- 🏠 **Local-first**: Works offline, syncs when online
-- ⭐ **Cascade Notation**: Efficient single-instance listener pattern
+### ⚡ **Intelligent Conflict Resolution**
+- **Multiple Built-in Strategies** - Last-write-wins, local/remote priority, merge
+- **Custom Resolvers** - Implement your own conflict resolution logic
+- **Field-Level Merging** - Granular control over conflict handling
 
-## 🚀 Platform Support
+### 📊 **Real-Time Synchronization**
+- **Reactive Event Streams** - Listen to data changes, sync progress, conflicts
+- **Automatic Sync** - Background synchronization with configurable intervals
+- **Manual Sync Control** - Trigger sync on-demand or pause when needed
 
-**Mobile Only**: This package is designed for mobile platforms (Android & iOS) due to WorkManager dependency requirements.
+### 👥 **Multi-User Support**
+- **User Switching** - Seamless switching between user accounts
+- **Configurable Strategies** - Clear-and-fetch, sync-then-switch, keep-local
+- **Per-User Data Isolation** - Complete data separation by user
 
-- ✅ Android
-- ✅ iOS
-- ❌ Web (WorkManager not supported)
-- ❌ Desktop (WorkManager not supported)
+### 🔌 **Pluggable Architecture**
+- **Adapter System** - Support for Hive, SQLite, Firestore, or custom backends
+- **Middleware Pipeline** - Transform, validate, and log at every stage
+- **Extensible Design** - Easy to extend and customize
 
-## 📦 Installation
+### 📈 **Enterprise Features**
+- **Metrics & Analytics** - Track sync performance and system health
+- **Comprehensive Logging** - Debug-friendly logging with configurable levels
+- **Health Checks** - Monitor system status and connectivity
+- **Batch Operations** - Efficient bulk sync with configurable batch sizes
 
-Add this to your `pubspec.yaml`:
+---
+
+## 🚀 Quick Start
+
+### 1️⃣ Installation
+
+Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  synq_manager: latest_version
+  synq_manager: ^0.1.0
 ```
 
 Run:
@@ -52,857 +78,961 @@ Run:
 flutter pub get
 ```
 
-## 🛠️ WorkManager Setup
-
-SynQ Manager uses WorkManager for background synchronization. Follow these platform-specific setup instructions:
-
-### Android Setup
-
-1. **Minimum SDK Version**: Add to `android/app/build.gradle`:
-
-```gradle
-android {
-    compileSdkVersion 34
-    
-    defaultConfig {
-        minSdkVersion 23  // WorkManager requires API 23+
-        targetSdkVersion 34
-    }
-}
-```
-
-2. **Permissions**: Add to `android/app/src/main/AndroidManifest.xml`:
-
-```xml
-<uses-permission android:name="android.permission.INTERNET" />
-<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-<uses-permission android:name="android.permission.WAKE_LOCK" />
-<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
-<!-- For background sync -->
-<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-```
-
-3. **WorkManager Service**: Add to `android/app/src/main/AndroidManifest.xml` inside `<application>`:
-
-```xml
-<service
-    android:name="be.tramckrijte.workmanager.BackgroundService"
-    android:exported="false" />
-    
-<receiver
-    android:name="be.tramckrijte.workmanager.BackgroundService$AlarmReceiver"
-    android:exported="false" />
-```
-
-### iOS Setup
-
-1. **Minimum iOS Version**: Update `ios/Podfile`:
-
-```ruby
-platform :ios, '12.0'  # WorkManager requires iOS 12.0+
-```
-
-2. **Background Modes**: Add to `ios/Runner/Info.plist`:
-
-```xml
-<key>UIBackgroundModes</key>
-<array>
-    <string>background-processing</string>
-    <string>background-fetch</string>
-</array>
-```
-
-3. **Background App Refresh**: Add to `ios/Runner/Info.plist`:
-
-```xml
-<key>BGTaskSchedulerPermittedIdentifiers</key>
-<array>
-    <string>be.tramckrijte.workmanager.BackgroundService</string>
-</array>
-```
-
-## 🎯 Quick Start
-
-### 1. Basic Setup
+### 2️⃣ Define Your Entity
 
 ```dart
 import 'package:synq_manager/synq_manager.dart';
 
-// Define your data model
-class UserProfile {
+class Task implements SyncableEntity {
+  @override
   final String id;
-  final String name;
-  final String email;
   
-  UserProfile({required this.id, required this.name, required this.email});
+  @override
+  final String userId;
   
-  // Add serialization methods
+  final String title;
+  final bool completed;
+  
+  @override
+  final DateTime modifiedAt;
+  
+  @override
+  final DateTime createdAt;
+  
+  @override
+  final String version;
+  
+  @override
+  final bool isDeleted;
+
+  Task({
+    required this.id,
+    required this.userId,
+    required this.title,
+    this.completed = false,
+    required this.modifiedAt,
+    required this.createdAt,
+    required this.version,
+    this.isDeleted = false,
+  });
+
+  @override
   Map<String, dynamic> toJson() => {
     'id': id,
-    'name': name,
-    'email': email,
+    'userId': userId,
+    'title': title,
+    'completed': completed,
+    'modifiedAt': modifiedAt.toIso8601String(),
+    'createdAt': createdAt.toIso8601String(),
+    'version': version,
+    'isDeleted': isDeleted,
   };
-  
-  factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
+
+  factory Task.fromJson(Map<String, dynamic> json) => Task(
     id: json['id'],
-    name: json['name'],
-    email: json['email'],
+    userId: json['userId'],
+    title: json['title'],
+    completed: json['completed'] ?? false,
+    modifiedAt: DateTime.parse(json['modifiedAt']),
+    createdAt: DateTime.parse(json['createdAt']),
+    version: json['version'],
+    isDeleted: json['isDeleted'] ?? false,
   );
-}
 
-// Initialize SynqManager
-late SynqManager<UserProfile> userManager;
-
-Future<void> initializeSynq() async {
-  userManager = await SynqManager.getInstance<UserProfile>(
-    instanceName: 'user_profiles',
-    config: SyncConfig(
-      syncInterval: Duration(minutes: 5),
-      enableBackgroundSync: true,
-      encryptionKey: 'your-encryption-key', // Optional
-    ),
-    cloudSyncFunction: _syncToCloud,
-    cloudFetchFunction: _fetchFromCloud,
-    fromJson: UserProfile.fromJson, // Function to deserialize UserProfile from JSON
-    toJson: (profile) => profile.toJson(), // Function to serialize UserProfile to JSON
-  );
-}
-```
-
-**Important**: The `fromJson` and `toJson` parameters are required when working with complex custom objects that need proper JSON serialization/deserialization. For simple types like `String`, `int`, `Map<String, dynamic>`, these parameters can be omitted.
-
-### 2. Implement Cloud Functions
-
-```dart
-// Sync local changes to cloud
-Future<SyncResult<UserProfile>> _syncToCloud(
-  Map<String, SyncData<UserProfile>> localChanges,
-  Map<String, String> headers,
-) async {
-  try {
-    // Your API call logic here
-    final response = await http.post(
-      Uri.parse('https://your-api.com/sync'),
-      headers: {'Content-Type': 'application/json', ...headers},
-      body: jsonEncode({
-        'changes': localChanges.map((key, data) => MapEntry(key, {
-          'value': data.value.toJson(),
-          'version': data.version,
-          'timestamp': data.timestamp,
-          'deleted': data.deleted,
-        })),
-      }),
-    );
-    
-    if (response.statusCode == 200) {
-      final responseData = jsonDecode(response.body);
-      final remoteData = <String, SyncData<UserProfile>>{};
-      
-      // Parse remote data
-      for (final entry in responseData['data'].entries) {
-        remoteData[entry.key] = SyncData<UserProfile>(
-          value: UserProfile.fromJson(entry.value['value']),
-          version: entry.value['version'],
-          timestamp: entry.value['timestamp'],
-          deleted: entry.value['deleted'] ?? false,
-        );
-      }
-      
-      return SyncResult<UserProfile>(
-        success: true,
-        remoteData: remoteData,
-        conflicts: [], // Handle conflicts if any
+  @override
+  Task copyWith({
+    String? userId,
+    DateTime? modifiedAt,
+    String? version,
+    bool? isDeleted,
+    String? title,
+    bool? completed,
+  }) =>
+      Task(
+        id: id,
+        userId: userId ?? this.userId,
+        title: title ?? this.title,
+        completed: completed ?? this.completed,
+        modifiedAt: modifiedAt ?? this.modifiedAt,
+        createdAt: createdAt,
+        version: version ?? this.version,
+        isDeleted: isDeleted ?? this.isDeleted,
       );
-    } else {
-      throw Exception('Sync failed: ${response.statusCode}');
-    }
-  } catch (error) {
-    return SyncResult<UserProfile>(
-      success: false,
-      error: error,
-    );
-  }
-}
-
-// Fetch updates from cloud
-Future<Map<String, SyncData<UserProfile>>> _fetchFromCloud(
-  int lastSyncTimestamp,
-  Map<String, String> headers,
-) async {
-  try {
-    final response = await http.get(
-      Uri.parse('https://your-api.com/updates?since=$lastSyncTimestamp'),
-      headers: headers,
-    );
-    
-    if (response.statusCode == 200) {
-      final responseData = jsonDecode(response.body);
-      final remoteData = <String, SyncData<UserProfile>>{};
-      
-      for (final entry in responseData['data'].entries) {
-        remoteData[entry.key] = SyncData<UserProfile>(
-          value: UserProfile.fromJson(entry.value['value']),
-          version: entry.value['version'],
-          timestamp: entry.value['timestamp'],
-          deleted: entry.value['deleted'] ?? false,
-        );
-      }
-      
-      return remoteData;
-    } else {
-      throw Exception('Fetch failed: ${response.statusCode}');
-    }
-  } catch (error) {
-    return {};
-  }
 }
 ```
 
-### 3. Use the Manager
+### 3️⃣ Initialize SynqManager
 
 ```dart
-class UserProfileScreen extends StatefulWidget {
-  @override
-  _UserProfileScreenState createState() => _UserProfileScreenState();
-}
-
-class _UserProfileScreenState extends State<UserProfileScreen> {
-  StreamSubscription<SynqEvent<UserProfile>>? _subscription;
-  List<UserProfile> _profiles = [];
-  
-  @override
-  void initState() {
-    super.initState();
-    _setupListener();
-    _loadProfiles();
-  }
-  
-  void _setupListener() {
-    _subscription = userManager.onData.listen((event) {
-      setState(() {
-        // Update UI based on events
-        switch (event.type) {
-          case SynqEventType.create:
-          case SynqEventType.update:
-            _loadProfiles(); // Refresh list
-            break;
-          case SynqEventType.delete:
-            _profiles.removeWhere((p) => p.id == event.key);
-            break;
-        }
-      });
-    });
-    
-    // Listen to sync events
-    userManager.onDone.listen((_) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sync completed')),
-      );
-    });
-    
-    userManager.onError.listen((event) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sync error: ${event.error}')),
-      );
-    });
-  }
-  
-  Future<void> _loadProfiles() async {
-    final profiles = await userManager.getAll();
-    setState(() {
-      _profiles = profiles.values.toList();
-    });
-  }
-  
-  Future<void> _addProfile() async {
-    final profile = UserProfile(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: 'New User',
-      email: 'user@example.com',
-    );
-    
-    await userManager.put(profile.id, profile);
-  }
-  
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('User Profiles'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.sync),
-            onPressed: () => userManager.sync(),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Sync status
-          Container(
-            padding: EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(userManager.connectivityStatus == ConnectivityStatus.online 
-                  ? Icons.cloud_done : Icons.cloud_off),
-                SizedBox(width: 8),
-                Text(userManager.isSyncing ? 'Syncing...' : 'Ready'),
-                Spacer(),
-                Text('Pending: ${userManager.pendingChangesCount}'),
-              ],
-            ),
-          ),
-          // Profile list
-          Expanded(
-            child: ListView.builder(
-              itemCount: _profiles.length,
-              itemBuilder: (context, index) {
-                final profile = _profiles[index];
-                return ListTile(
-                  title: Text(profile.name),
-                  subtitle: Text(profile.email),
-                  onTap: () => _editProfile(profile),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addProfile,
-        child: Icon(Icons.add),
-      ),
-    );
-          ),
-        ),
-      ],
-    );
-  }
-  
-  @override
-  void dispose() {
-    _subscription?.cancel();
-    super.dispose();
-  }
-}
-```
-
-### 3B. Socket.io Style Usage (New! 🚀)
-
-For a more intuitive and less boilerplate approach, use the new Socket.io-style API:
-
-```dart
-class UserProfileScreen extends StatefulWidget {
-  @override
-  _UserProfileScreenState createState() => _UserProfileScreenState();
-}
-
-class _UserProfileScreenState extends State<UserProfileScreen> {
-  List<UserProfile> _profiles = [];
-  bool _syncing = false;
-  SynqListeners<UserProfile>? _listeners;
-  
-  @override
-  void initState() {
-    super.initState();
-    _setupSocketStyleListeners();
-  }
-  
-  void _setupSocketStyleListeners() {
-    // Simplified Socket.io style - single instance with cascade notation
-    _listeners = userManager.on()
-      ..onInit((allProfiles) {
-        // Called when manager is ready with ALL data
-        print('📥 Loaded ${allProfiles.length} profiles');
-        setState(() {
-          _profiles = allProfiles.values.toList();
-        });
-      })
-      ..onCreate((key, profile) {
-        // Called when NEW profile is created - only new data
-        print('✨ New profile created: ${profile.name}');
-        setState(() {
-          _profiles.add(profile);
-        });
-      })
-      ..onUpdate((key, profile) {
-        // Called when profile is updated - only updated data
-        print('📝 Profile updated: ${profile.name}');
-        setState(() {
-          final index = _profiles.indexWhere((p) => p.id == key);
-          if (index != -1) _profiles[index] = profile;
-        });
-      })
-      ..onDelete((key) {
-        // Called when profile is deleted - only key
-        print('🗑️ Profile deleted: $key');
-        setState(() {
-          _profiles.removeWhere((p) => p.id == key);
-        });
-      })
-      ..onError((error) {
-        setState(() => _syncing = false);
-        _showError('Sync failed: $error');
-      })
-      ..onEvent((event) {
-        // Listen to all events - general callback
-        print('📊 Event: ${event.type}');
-        switch (event.type) {
-          case SynqEventType.syncStart:
-            setState(() => _syncing = true);
-            break;
-          case SynqEventType.syncComplete:
-            setState(() => _syncing = false);
-            _showMessage('Sync completed! ✅');
-            break;
-          default:
-            break;
-        }
-      });
-  }
-  
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
-  
-  void _showError(String error) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(error),
-        backgroundColor: Colors.red,
-      ),
-    );
-  }
-  
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('User Profiles'),
-        actions: [
-          if (_syncing) 
-            Padding(
-              padding: EdgeInsets.all(16),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            )
-          else
-            IconButton(
-              icon: Icon(Icons.sync),
-              onPressed: () => userManager.sync(),
-            ),
-        ],
-      ),
-      body: ListView.builder(
-        itemCount: _profiles.length,
-        itemBuilder: (context, index) {
-          final profile = _profiles[index];
-          return ListTile(
-            title: Text(profile.name),
-            subtitle: Text(profile.email),
-            trailing: IconButton(
-              icon: Icon(Icons.delete),
-              onPressed: () => userManager.delete(profile.id),
-            ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addProfile,
-        child: Icon(Icons.add),
-      ),
-    );
-  }
-  
-  Future<void> _addProfile() async {
-    final profile = UserProfile(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: 'New User ${_profiles.length + 1}',
-      email: 'user${_profiles.length + 1}@example.com',
-    );
-    
-    // This will automatically trigger onCreate() callback
-    await userManager.put(profile.id, profile);
-  }
-  
-  @override
-  void dispose() {
-    _listeners?.dispose(); // Clean up listeners
-    super.dispose();
-  }
-}
-```
-
-### Socket.io Style API Reference
-
-| Method | When Called | Data Provided | Use Case |
-|--------|-------------|---------------|----------|
-| `onEvent(callback)` | **All events** | **Event object** | Listen to all events in one place |
-| `onInit(callback)` | Manager ready | **All existing data** | Initialize UI with all data |
-| `onCreate(callback)` | New item added | **Only new item** | Add item to UI |
-| `onUpdate(callback)` | Item modified | **Only updated item** | Update item in UI |
-| `onDelete(callback)` | Item removed | **Only key** | Remove item from UI |
-| `onError(callback)` | Error occurs | **Error object** | Show error message |
-
-**Key Benefits of Simplified API:**
-- 🚀 **Single Instance**: Uses cascade notation with one listener instance instead of multiple
-- ⚡ **Better Performance**: Reduced memory footprint and improved efficiency
-- 🎯 **Essential Callbacks Only**: Removed 10+ redundant callbacks, kept only the necessary 6
-- 🔄 **Universal Event Handler**: `onEvent()` captures all events for advanced use cases
-- � **Clean Code**: Intuitive API that's easy to understand and maintain
-
-**Pattern Comparison:**
-```dart
-// ❌ Old: Creates multiple instances
-manager.onInit(...).onCreate(...).onUpdate(...)
-
-// ✅ New: Single instance with cascade
-final listeners = manager.on();
-listeners..onInit(...)..onCreate(...)..onUpdate(...);
-```
-
-## 🔧 Advanced Configuration
-
-```dart
-final config = SyncConfig(
-  // Sync frequency
-  syncInterval: Duration(minutes: 5),
-  
-  // Batch processing
-  batchSize: 50,
-  maxRetries: 3,
-  retryDelay: Duration(seconds: 2),
-  
-  // Network settings
-  requestTimeout: Duration(seconds: 30),
-  connectTimeout: Duration(seconds: 10),
-  
-  // Encryption (AES-256)
-  encryptionKey: 'your-32-character-encryption-key',
-  
-  // Conflict resolution strategy
-  conflictResolution: ConflictResolution.lastWriteWins,
-```
-
-## ⚙️ Configuration Options
-
-### SyncConfig
-
-```dart
-final config = SyncConfig(
-  // Sync interval (default: 5 minutes)
-  syncInterval: Duration(minutes: 5),
-  
-  // Retry attempts for failed syncs (default: 3)
-  retryAttempts: 3,
-  
-  // Delay between retries (default: 2 seconds)
-  retryDelay: Duration(seconds: 2),
-  
-  // Batch size for bulk operations (default: 50)
-  batchSize: 50,
-  
-  // Encryption key for local storage (optional)
-  encryptionKey: 'your-secret-key',
-  
-  // Sync priority (default: normal)
-  priority: SyncPriority.high,
-  
-  // Enable background sync (default: true)
-  enableBackgroundSync: true,
-  
-  // Enable automatic retry (default: true)
-  enableAutoRetry: true,
-  
-  // Enable conflict resolution (default: true)
-  enableConflictResolution: true,
-  
-  // Maximum storage size in MiB (default: 100)
-  maxStorageSize: 100,
-  
-  // Enable compression (default: true)
-  compressionEnabled: true,
-  
-  // Custom headers for API calls
-  customHeaders: {
-    'Authorization': 'Bearer $token',
-    'X-API-Version': '1.0',
-  },
-);
-```
-
-### Predefined Configurations
-
-```dart
-// High priority - frequent syncs
-final config = SyncConfig.highPriority(
-  encryptionKey: 'key',
-  customHeaders: {'Authorization': 'Bearer $token'},
+// Create adapters
+final localAdapter = HiveAdapter<Task>(
+  boxName: 'tasks',
+  fromJson: Task.fromJson,
 );
 
-// Low priority - less frequent syncs
-final config = SyncConfig.lowPriority();
-
-// Mobile optimized - smaller batches, longer intervals
-final config = SyncConfig.mobile();
-```
-
-## 🔄 Conflict Resolution
-
-Handle data conflicts when the same data is modified both locally and remotely:
-
-```dart
-// Listen for conflicts
-userManager.onConflict.listen((event) async {
-  final conflict = userManager.activeConflicts[event.key];
-  if (conflict != null) {
-    // Show conflict resolution UI
-    await _showConflictDialog(conflict);
-  }
-});
-
-Future<void> _showConflictDialog(DataConflict<UserProfile> conflict) async {
-  return showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text('Data Conflict'),
-      content: Column(
-        children: [
-          Text('Local: ${conflict.localData.value.name}'),
-          Text('Remote: ${conflict.remoteData.value.name}'),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () {
-            // Use local version
-            userManager.resolveConflict(
-              conflict.key,
-              ConflictResolutionStrategy.useLocal,
-            );
-            Navigator.pop(context);
-          },
-          child: Text('Keep Local'),
-        ),
-        TextButton(
-          onPressed: () {
-            // Use remote version
-            userManager.resolveConflict(
-              conflict.key,
-              ConflictResolutionStrategy.useRemote,
-            );
-            Navigator.pop(context);
-          },
-          child: Text('Use Remote'),
-        ),
-        TextButton(
-          onPressed: () {
-            // Use custom merge logic
-            userManager.resolveConflict(
-              conflict.key,
-              ConflictResolutionStrategy.merge,
-              customResolver: (local, remote) {
-                // Custom merge logic
-                return local.copyWith(
-                  value: UserProfile(
-                    id: local.value.id,
-                    name: remote.value.name, // Use remote name
-                    email: local.value.email, // Keep local email
-                  ),
-                );
-              },
-            );
-            Navigator.pop(context);
-          },
-          child: Text('Merge'),
-        ),
-      ],
-    ),
-  );
-}
-```
-
-## 📊 Monitoring & Statistics
-
-```dart
-// Get sync statistics
-final syncStats = userManager.syncStats;
-print('Last sync: ${syncStats.timeSinceLastSync}');
-print('Pending changes: ${syncStats.pendingChangesCount}');
-print('Active conflicts: ${syncStats.activeConflictsCount}');
-
-// Get storage statistics
-final storageStats = await userManager.storageStats;
-print('Total items: ${storageStats.totalItems}');
-print('Storage size: ${storageStats.sizeInBytes} bytes');
-
-// Monitor connectivity
-userManager.onConnected.listen((_) {
-  print('Connected to internet');
-});
-
-userManager.onDisconnected.listen((_) {
-  print('Lost internet connection');
-});
-```
-
-## 🧪 Testing
-
-For testing, you can mock the cloud functions:
-
-```dart
-// Mock sync function for testing
-Future<SyncResult<TestModel>> mockSyncFunction(
-  Map<String, SyncData<TestModel>> localChanges,
-  Map<String, String> headers,
-) async {
-  // Simulate network delay
-  await Future.delayed(Duration(milliseconds: 100));
-  
-  return SyncResult<TestModel>(
-    success: true,
-    remoteData: {},
-  );
-}
-
-// Mock fetch function for testing
-Future<Map<String, SyncData<TestModel>>> mockFetchFunction(
-  int lastSyncTimestamp,
-  Map<String, String> headers,
-) async {
-  await Future.delayed(Duration(milliseconds: 100));
-  return {};
-}
-
-// Use in tests
-final testManager = await SynqManager.getInstance<TestModel>(
-  instanceName: 'test',
-  cloudSyncFunction: mockSyncFunction,
-  cloudFetchFunction: mockFetchFunction,
-);
-```
-
-## 🚀 Advanced Usage
-
-### Multiple Managers
-
-You can create multiple managers for different data types:
-
-```dart
-final userManager = await SynqManager.getInstance<User>(
-  instanceName: 'users',
-  cloudSyncFunction: syncUsers,
-  cloudFetchFunction: fetchUsers,
+final remoteAdapter = FirebaseAdapter<Task>(
+  collection: 'tasks',
+  fromJson: Task.fromJson,
 );
 
-final postManager = await SynqManager.getInstance<Post>(
-  instanceName: 'posts',
-  cloudSyncFunction: syncPosts,
-  cloudFetchFunction: fetchPosts,
+// Initialize manager
+final manager = SynqManager<Task>(
+  localAdapter: localAdapter,
+  remoteAdapter: remoteAdapter,
+  synqConfig: SynqConfig(
+    autoSyncInterval: Duration(minutes: 5),
+    enableLogging: true,
+    maxRetries: 3,
+    defaultConflictResolver: LastWriteWinsResolver<Task>(),
+  ),
 );
+
+await manager.initialize();
 ```
 
-### Custom Event Handling
+### 4️⃣ CRUD Operations
 
 ```dart
-// Listen to specific events
-userManager.onEvent(SynqEventType.syncStart).listen((_) {
-  // Show loading indicator
+// 📝 Create
+final task = Task(
+  id: Uuid().v4(),
+  userId: 'user123',
+  title: 'Buy groceries',
+  modifiedAt: DateTime.now(),
+  createdAt: DateTime.now(),
+  version: 'v1',
+);
+await manager.save(task, 'user123');
+
+// 📖 Read
+final allTasks = await manager.getAll('user123');
+final specificTask = await manager.getById('task-id', 'user123');
+
+// ✏️ Update
+final updated = task.copyWith(
+  completed: true,
+  modifiedAt: DateTime.now(),
+  version: 'v2',
+);
+await manager.save(updated, 'user123');
+
+// 🗑️ Delete
+await manager.delete('task-id', 'user123');
+```
+
+### 5️⃣ Synchronization
+
+```dart
+// 🔄 Manual sync
+final result = await manager.sync('user123');
+print('Synced: ${result.syncedCount}, Failed: ${result.failedCount}');
+
+// ⚡ Auto-sync
+manager.startAutoSync('user123');
+
+// 🎯 Force full sync
+await manager.sync('user123', force: true);
+
+// ⏸️ Stop auto-sync
+manager.stopAutoSync(userId: 'user123');
+```
+
+### 6️⃣ Listen to Events
+
+```dart
+// 📊 Data changes
+manager.onDataChange.listen((event) {
+  print('${event.changeType}: ${event.data.title}');
 });
 
-userManager.onEvent(SynqEventType.syncComplete).listen((_) {
-  // Hide loading indicator
+// 📈 Sync progress
+manager.onSyncProgress.listen((event) {
+  print('Progress: ${event.completed}/${event.total}');
 });
 
-// Filter events by key
-userManager.events
-  .where((event) => event.key.startsWith('user_'))
-  .listen((event) {
-    // Handle user-specific events
-  });
+// ⚠️ Conflicts
+manager.onConflict.listen((event) {
+  print('Conflict: ${event.context.type}');
+});
+
+// ❌ Errors
+manager.onError.listen((event) {
+  print('Error: ${event.error}');
+});
 ```
-
-### Force Sync Specific Keys
-
-```dart
-// Sync only specific items
-await userManager.syncKeys(['user_1', 'user_2']);
-```
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-1. **Background sync not working**: Ensure WorkManager setup is correct and app has background permissions.
-
-2. **Encryption errors**: Make sure the encryption key is consistent across app launches.
-
-3. **Memory issues**: Reduce `batchSize` and `maxStorageSize` for memory-constrained devices.
-
-4. **Sync conflicts**: Implement proper conflict resolution strategies for your use case.
-
-### Debug Mode
-
-Enable debug logging:
-
-```dart
-import 'package:flutter/foundation.dart';
-
-// Debug events
-if (kDebugMode) {
-  userManager.events.listen((event) {
-    print('SynQ Event: ${event.type} - ${event.key}');
-  });
-}
-```
-
-## 📄 API Reference
-
-### SynqManager<T>
-
-Main manager class for synchronization operations.
-
-#### Methods
-
-- `Future<void> put(String key, T value, {Map<String, dynamic>? metadata})` - Store data
-- `Future<T?> get(String key)` - Retrieve data
-- `Future<void> update(String key, T value, {Map<String, dynamic>? metadata})` - Update data
-- `Future<void> delete(String key)` - Delete data
-- `Future<Map<String, T>> getAll()` - Get all data
-- `Future<void> sync()` - Manual sync
-- `Future<void> syncKeys(List<String> keys)` - Sync specific keys
-- `Future<void> resolveConflict(String key, ConflictResolutionStrategy strategy)` - Resolve conflicts
-
-#### Properties
-
-- `Stream<SynqEvent<T>> events` - All events stream
-- `bool isReady` - Whether manager is ready
-- `ConnectivityStatus connectivityStatus` - Current connectivity
-- `bool isSyncing` - Whether sync is in progress
-- `int pendingChangesCount` - Number of pending changes
-- `Map<String, DataConflict<T>> activeConflicts` - Active conflicts
-- `SyncStats syncStats` - Sync statistics
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read our contributing guidelines and submit pull requests.
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🔗 Links
-
-- [Documentation](https://github.com/ahmtydn/synq_manager)
-- [Issues](https://github.com/ahmtydn/synq_manager/issues)
-- [Changelog](CHANGELOG.md)
 
 ---
 
-Made with ❤️ for the Flutter community
+## 📖 Core Concepts
+
+### 🎯 SyncableEntity
+
+All entities must implement the `SyncableEntity` interface:
+
+```dart
+abstract class SyncableEntity {
+  String get id;              // Unique identifier
+  String get userId;          // User ownership
+  DateTime get modifiedAt;    // Last modification time
+  DateTime get createdAt;     // Creation time
+  String get version;         // Version for conflict detection
+  bool get isDeleted;         // Soft delete flag
+  
+  Map<String, dynamic> toJson();
+  T copyWith({...});
+}
+```
+
+### 🔄 Sync Operation Flow
+
+```
+1. User Action → Save/Delete
+2. Local Storage ← Data Written
+3. Queue Manager ← Operation Enqueued
+4. Sync Trigger → Periodic/Manual
+5. Sync Engine → Process Queue
+6. Remote Adapter → Push to Server
+7. Conflict Detection → If Needed
+8. Resolution → Apply Strategy
+9. Events → Notify Listeners
+10. Metrics → Update Statistics
+```
+
+### 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    SynqManager                          │
+│  (Public API - CRUD, Sync, User Management)            │
+└──────────────────┬──────────────────────────────────────┘
+                   │
+        ┌──────────┴──────────┐
+        │                     │
+┌───────▼──────┐    ┌────────▼────────┐
+│ SyncEngine   │    │ QueueManager    │
+│ (Sync Logic) │    │ (Operations)    │
+└───────┬──────┘    └────────┬────────┘
+        │                    │
+        └──────────┬─────────┘
+                   │
+    ┌──────────────┼──────────────┐
+    │              │              │
+┌───▼────┐  ┌─────▼──────┐  ┌───▼─────────┐
+│ Local  │  │  Remote    │  │  Conflict   │
+│Adapter │  │  Adapter   │  │  Detector   │
+└────────┘  └────────────┘  └─────────────┘
+```
+
+---
+
+## 🔧 Configuration
+
+### 📋 SynqConfig Options
+
+```dart
+SynqConfig(
+  // ⏱️ Auto-sync settings
+  autoSyncInterval: Duration(minutes: 5),
+  autoSyncOnConnect: true,
+  
+  // 🔄 Retry behavior
+  maxRetries: 3,
+  retryDelay: Duration(seconds: 5),
+  
+  // 📦 Batch settings
+  batchSize: 50,
+  
+  // ⚔️ Conflict resolution
+  defaultConflictResolver: LastWriteWinsResolver<Task>(),
+  
+  // 👥 User switching
+  defaultUserSwitchStrategy: UserSwitchStrategy.syncThenSwitch,
+  
+  // 📡 Real-time sync
+  enableRealTimeSync: false,
+  
+  // ⏰ Timeouts
+  syncTimeout: Duration(minutes: 2),
+  
+  // 📝 Logging
+  enableLogging: true,
+)
+```
+
+### 🎯 Configuration Profiles
+
+#### 🔧 Development
+```dart
+SynqConfig(
+  autoSyncInterval: Duration(seconds: 30),
+  enableLogging: true,
+  maxRetries: 1,
+  syncTimeout: Duration(seconds: 30),
+)
+```
+
+#### 🚀 Production
+```dart
+SynqConfig(
+  autoSyncInterval: Duration(minutes: 5),
+  enableLogging: false,
+  maxRetries: 3,
+  retryDelay: Duration(seconds: 10),
+  syncTimeout: Duration(minutes: 2),
+  batchSize: 100,
+)
+```
+
+#### 🧪 Testing
+```dart
+SynqConfig(
+  autoSyncInterval: Duration(hours: 24),  // Disable auto-sync
+  enableLogging: true,
+  maxRetries: 0,
+)
+```
+
+---
+
+## 🗄️ Adapters
+
+### 📱 Local Adapters
+
+#### Hive (Recommended)
+```dart
+final localAdapter = HiveAdapter<Task>(
+  boxName: 'tasks',
+  fromJson: Task.fromJson,
+);
+```
+
+#### SQLite
+```dart
+final localAdapter = SQLiteAdapter<Task>(
+  tableName: 'tasks',
+  fromJson: Task.fromJson,
+);
+```
+
+### ☁️ Remote Adapters
+
+#### Firebase/Firestore
+```dart
+final remoteAdapter = FirebaseAdapter<Task>(
+  collection: 'tasks',
+  fromJson: Task.fromJson,
+);
+```
+
+#### REST API
+```dart
+final remoteAdapter = RestApiAdapter<Task>(
+  baseUrl: 'https://api.example.com',
+  endpoint: '/tasks',
+  fromJson: Task.fromJson,
+);
+```
+
+#### Supabase
+```dart
+final remoteAdapter = SupabaseAdapter<Task>(
+  tableName: 'tasks',
+  fromJson: Task.fromJson,
+);
+```
+
+### 🛠️ Custom Adapter
+
+```dart
+class CustomLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
+  @override
+  Future<void> initialize() async {
+    // Initialize storage
+  }
+
+  @override
+  Future<List<T>> getAll(String userId) async {
+    // Fetch all items
+  }
+
+  @override
+  Future<T?> getById(String id, String userId) async {
+    // Fetch single item
+  }
+
+  @override
+  Future<void> save(T item, String userId) async {
+    // Save item
+  }
+
+  @override
+  Future<void> delete(String id, String userId) async {
+    // Delete item
+  }
+
+  @override
+  Future<List<SyncOperation<T>>> getPendingOperations(String userId) async {
+    // Get pending operations
+  }
+
+  @override
+  Future<void> addPendingOperation(String userId, SyncOperation<T> operation) async {
+    // Add to queue
+  }
+
+  @override
+  Future<void> markAsSynced(String operationId) async {
+    // Remove from queue
+  }
+
+  @override
+  Future<void> clearUserData(String userId) async {
+    // Clear user data
+  }
+
+  @override
+  Future<SyncMetadata?> getSyncMetadata(String userId) async {
+    // Get metadata
+  }
+
+  @override
+  Future<void> updateSyncMetadata(SyncMetadata metadata, String userId) async {
+    // Update metadata
+  }
+
+  @override
+  Future<void> dispose() async {
+    // Cleanup
+  }
+}
+```
+
+---
+
+## ⚔️ Conflict Resolution
+
+### 🎯 Built-in Resolvers
+
+#### Last-Write-Wins (Default)
+```dart
+LastWriteWinsResolver<Task>()
+```
+
+**Behavior:** Most recent modification wins
+
+**Use Case:** Simple scenarios, collaborative editing
+
+#### Local Priority
+```dart
+LocalPriorityResolver<Task>()
+```
+
+**Behavior:** Local changes always win
+
+**Use Case:** Offline-first apps, user preferences
+
+#### Remote Priority
+```dart
+RemotePriorityResolver<Task>()
+```
+
+**Behavior:** Remote changes always win
+
+**Use Case:** Server authority, synchronized state
+
+### 🛠️ Custom Resolver
+
+```dart
+class TaskMergeResolver extends SyncConflictResolver<Task> {
+  @override
+  Future<ConflictResolution<Task>> resolve({
+    required Task? localItem,
+    required Task? remoteItem,
+    required ConflictContext context,
+  }) async {
+    if (localItem == null) return ConflictResolution.useRemote(remoteItem!);
+    if (remoteItem == null) return ConflictResolution.useLocal(localItem);
+    
+    // Custom merge logic
+    final merged = localItem.copyWith(
+      title: remoteItem.modifiedAt.isAfter(localItem.modifiedAt)
+          ? remoteItem.title
+          : localItem.title,
+      completed: localItem.completed || remoteItem.completed,
+      modifiedAt: DateTime.now(),
+      version: 'v${int.parse(localItem.version.substring(1)) + 1}',
+    );
+    
+    return ConflictResolution.merge(merged);
+  }
+
+  @override
+  String get name => 'TaskMerge';
+}
+```
+
+### 🔍 Conflict Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `bothModified` | Both local and remote modified | User edits offline, server updates |
+| `deletedLocally` | Deleted locally, modified remotely | User deletes, server updates |
+| `deletedRemotely` | Modified locally, deleted remotely | User edits, server deletes |
+| `versionMismatch` | Version conflict | Concurrent modifications |
+| `userMismatch` | Different user IDs | Multi-user conflict |
+
+---
+
+## 📊 Event Streams
+
+### 🎯 Event Types
+
+#### Data Changes
+```dart
+manager.onDataChange.listen((event) {
+  switch (event.changeType) {
+    case ChangeType.added:
+      print('Added: ${event.data.title}');
+      break;
+    case ChangeType.updated:
+      print('Updated: ${event.data.title}');
+      break;
+    case ChangeType.deleted:
+      print('Deleted: ${event.data.title}');
+      break;
+  }
+});
+```
+
+#### Sync Progress
+```dart
+manager.onSyncProgress.listen((event) {
+  final progress = (event.completed / event.total * 100).toStringAsFixed(1);
+  print('Sync: $progress% (${event.completed}/${event.total})');
+});
+```
+
+#### Conflicts
+```dart
+manager.onConflict.listen((event) {
+  print('Conflict Type: ${event.context.type}');
+  print('Entity ID: ${event.context.entityId}');
+  print('Resolution: ${event.resolution?.action}');
+});
+```
+
+#### Errors
+```dart
+manager.onError.listen((event) {
+  print('Error: ${event.error}');
+  print('Operation: ${event.operation}');
+  print('Can Retry: ${event.canRetry}');
+});
+```
+
+#### Sync Status
+```dart
+manager.syncStatusStream.listen((snapshot) {
+  print('Status: ${snapshot.status}');
+  print('Progress: ${snapshot.progress}');
+  print('Pending: ${snapshot.pendingOperations}');
+});
+```
+
+### 📡 All Events
+```dart
+manager.eventStream.listen((event) {
+  if (event is DataChangeEvent<Task>) {
+    // Handle data change
+  } else if (event is SyncProgressEvent) {
+    // Handle sync progress
+  } else if (event is ConflictEvent<Task>) {
+    // Handle conflict
+  } else if (event is ErrorEvent) {
+    // Handle error
+  }
+});
+```
+
+---
+
+## 🎯 Advanced Features
+
+### 👥 User Switching
+
+```dart
+enum UserSwitchStrategy {
+  clearAndFetch,      // 🗑️ Clear local, fetch fresh
+  syncThenSwitch,     // ✅ Sync current user first
+  promptIfUnsyncedData, // ⚠️ Ask user if unsynced data
+  keepLocal,          // 💾 Keep local data as-is
+}
+
+final result = await manager.switchUser(
+  oldUserId: 'user1',
+  newUserId: 'user2',
+  strategy: UserSwitchStrategy.syncThenSwitch,
+);
+
+if (result.success) {
+  print('Switched successfully');
+} else {
+  print('Switch failed: ${result.error}');
+}
+```
+
+### 🎨 Middleware
+
+```dart
+class LoggingMiddleware<T extends SyncableEntity> extends SynqMiddleware<T> {
+  @override
+  Future<void> beforeSync(String userId) async {
+    print('🔄 Starting sync for $userId');
+  }
+
+  @override
+  Future<void> afterSync(String userId, SyncResult result) async {
+    print('✅ Synced ${result.syncedCount} items');
+  }
+
+  @override
+  Future<T> transformBeforeSave(T item) async {
+    print('💾 Saving: ${item.id}');
+    return item;
+  }
+
+  @override
+  Future<T> transformAfterFetch(T item) async {
+    print('📥 Fetched: ${item.id}');
+    return item;
+  }
+
+  @override
+  Future<void> onConflict(ConflictContext context, T? local, T? remote) async {
+    print('⚠️ Conflict: ${context.type}');
+  }
+}
+
+// Add middleware
+manager.addMiddleware(LoggingMiddleware<Task>());
+```
+
+### 📊 Metrics & Monitoring
+
+```dart
+// Get sync statistics
+final stats = await manager.getSyncStatistics('user123');
+print('Total syncs: ${stats.totalSyncs}');
+print('Success rate: ${(stats.successfulSyncs / stats.totalSyncs * 100).toStringAsFixed(1)}%');
+print('Avg duration: ${stats.averageDuration.inSeconds}s');
+print('Last sync: ${stats.lastSyncTime}');
+
+// Get current sync status
+final snapshot = await manager.getSyncSnapshot('user123');
+print('Status: ${snapshot.status}');
+print('Progress: ${snapshot.progress}');
+print('Pending: ${snapshot.pendingOperations}');
+print('Last error: ${snapshot.lastError}');
+
+// Health check
+final health = await manager.getHealthStatus();
+print('Local adapter: ${health.localAdapterHealthy}');
+print('Remote adapter: ${health.remoteAdapterHealthy}');
+print('Network: ${health.networkConnected}');
+```
+
+### ⏸️ Pause & Resume
+
+```dart
+// Pause sync
+manager.pauseSync('user123');
+
+// Resume sync
+manager.resumeSync('user123');
+
+// Cancel ongoing sync
+await manager.cancelSync('user123');
+```
+
+---
+
+## 🧪 Testing
+
+### 📝 Test Coverage
+
+**34 comprehensive tests** covering:
+
+- ✅ Queue Management (6 tests)
+- ✅ Conflict Detection (8 tests)
+- ✅ Resolution Strategies (8 tests)
+- ✅ Integration Scenarios (12 tests)
+
+### 🚀 Run Tests
+
+```bash
+# Run all tests
+flutter test
+
+# Run specific test file
+flutter test test/core/queue_manager_test.dart
+
+# Run with coverage
+flutter test --coverage
+
+# Watch mode
+flutter test --watch
+```
+
+### 🧪 Example Test
+
+```dart
+test('should sync data successfully', () async {
+  // Arrange
+  final localAdapter = MockLocalAdapter<Task>();
+  final remoteAdapter = MockRemoteAdapter<Task>();
+  final manager = SynqManager<Task>(
+    localAdapter: localAdapter,
+    remoteAdapter: remoteAdapter,
+  );
+  
+  await manager.initialize();
+  
+  final task = Task(
+    id: 'task-1',
+    userId: 'user1',
+    title: 'Test task',
+    modifiedAt: DateTime.now(),
+    createdAt: DateTime.now(),
+    version: 'v1',
+  );
+  
+  // Act
+  await manager.save(task, 'user1');
+  final result = await manager.sync('user1');
+  
+  // Assert
+  expect(result.syncedCount, equals(1));
+  expect(result.failedCount, equals(0));
+});
+```
+
+---
+
+## 📝 Best Practices
+
+### 🏗️ Design Guidelines
+
+#### ✅ **DO:**
+- Implement `SyncableEntity` correctly with all required fields
+- Use meaningful IDs (UUID recommended)
+- Include version tracking for conflict detection
+- Add timestamps for all entities
+- Use soft deletes with `isDeleted` flag
+
+#### ❌ **DON'T:**
+- Modify `id` or `userId` after creation
+- Skip version updates on modifications
+- Use auto-incrementing IDs in distributed systems
+- Forget to handle `isDeleted` in queries
+
+### 🔐 Security Best Practices
+
+#### ✅ **DO:**
+- Validate user permissions before sync
+- Encrypt sensitive data in local storage
+- Use secure communication (HTTPS) for remote sync
+- Implement proper authentication
+- Sanitize data before saving
+
+#### ❌ **DON'T:**
+- Store sensitive data unencrypted
+- Trust client-side validation alone
+- Skip authentication checks
+- Expose internal IDs to users
+
+### ⚡ Performance Tips
+
+#### ✅ **DO:**
+- Use batch operations for bulk data
+- Configure appropriate sync intervals
+- Implement efficient indexes in local storage
+- Use pagination for large datasets
+- Monitor sync performance metrics
+
+#### ❌ **DON'T:**
+- Sync too frequently (battery drain)
+- Load all data into memory at once
+- Ignore network conditions
+- Skip error handling and retries
+
+### 🔄 Sync Strategy
+
+#### ✅ **DO:**
+- Start with conservative sync intervals (5-15 minutes)
+- Implement proper conflict resolution strategy
+- Test sync with poor network conditions
+- Handle offline mode gracefully
+- Provide user feedback during sync
+
+#### ❌ **DON'T:**
+- Force sync on every user action
+- Assume network is always available
+- Ignore sync conflicts
+- Block UI during sync operations
+
+---
+
+## 🛠️ Development
+
+### 🚀 Getting Started
+
+```bash
+# Clone repository
+git clone https://github.com/ahmtydn/synq_manager.git
+cd synq_manager
+
+# Install dependencies
+flutter pub get
+
+# Run tests
+flutter test
+
+# Run example
+cd example
+flutter run
+```
+
+### 🔍 Project Structure
+
+```
+synq_manager/
+├── lib/
+│   ├── synq_manager.dart              # Public API
+│   └── src/
+│       ├── core/                      # Core components
+│       │   ├── synq_manager.dart      # Main manager class
+│       │   ├── sync_engine.dart       # Sync orchestration
+│       │   ├── queue_manager.dart     # Operation queue
+│       │   └── conflict_detector.dart # Conflict detection
+│       ├── adapters/                  # Adapter interfaces
+│       │   ├── local_adapter.dart
+│       │   └── remote_adapter.dart
+│       ├── resolvers/                 # Conflict resolvers
+│       │   ├── sync_conflict_resolver.dart
+│       │   ├── last_write_wins_resolver.dart
+│       │   ├── local_priority_resolver.dart
+│       │   └── remote_priority_resolver.dart
+│       ├── middleware/                # Middleware system
+│       │   └── synq_middleware.dart
+│       ├── models/                    # Data models
+│       │   ├── syncable_entity.dart
+│       │   ├── sync_operation.dart
+│       │   ├── sync_result.dart
+│       │   ├── conflict_context.dart
+│       │   └── sync_metadata.dart
+│       └── events/                    # Event system
+│           ├── sync_event.dart
+│           ├── data_change_event.dart
+│           └── conflict_event.dart
+├── test/                              # Tests (34 tests)
+│   ├── core/
+│   ├── resolvers/
+│   ├── integration/
+│   └── mocks/
+├── example/                           # Example app
+│   ├── lib/
+│   │   ├── main.dart
+│   │   ├── models/
+│   │   └── adapters/
+│   └── README.md
+├── DOCUMENTATION.md                   # Full documentation
+├── CONTRIBUTING.md                    # Contribution guide
+└── README.md                          # This file
+```
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how you can help:
+
+### 🐛 Bug Reports
+
+- Use the [issue tracker](https://github.com/ahmtydn/synq_manager/issues)
+- Include minimal reproduction case
+- Provide environment details
+
+### 💡 Feature Requests
+
+- Check existing [discussions](https://github.com/ahmtydn/synq_manager/discussions)
+- Explain use case and benefits
+- Consider implementation complexity
+
+### 🔧 Pull Requests
+
+1. **Fork** the repository
+2. **Create** feature branch (`git checkout -b feature/amazing-feature`)
+3. **Add** tests for new functionality
+4. **Ensure** all tests pass (`flutter test`)
+5. **Run** analysis (`flutter analyze`)
+6. **Commit** changes (`git commit -m 'Add amazing feature'`)
+7. **Push** to branch (`git push origin feature/amazing-feature`)
+8. **Submit** pull request
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
+---
+
+## 📞 Support & Community
+
+### 📚 **Documentation**
+- [Full Documentation](DOCUMENTATION.md)
+- [API Reference](https://pub.dev/documentation/synq_manager/latest/)
+- [Example App](example/)
+
+### 💬 **Community**
+- [GitHub Discussions](https://github.com/ahmtydn/synq_manager/discussions)
+- [Issue Tracker](https://github.com/ahmtydn/synq_manager/issues)
+
+### 🆘 **Need Help?**
+- Check the [FAQ](https://github.com/ahmtydn/synq_manager/discussions/categories/q-a)
+- Search [existing issues](https://github.com/ahmtydn/synq_manager/issues)
+- Ask in [discussions](https://github.com/ahmtydn/synq_manager/discussions)
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- **Flutter Team** - For the amazing framework
+- **Dart Team** - For excellent language and tooling
+- **RxDart Contributors** - For reactive programming support
+- **Open Source Community** - For inspiration and feedback
+- **Contributors** - For making this project better
+
+---
+
+## 🌟 Show Your Support
+
+If this project helped you, please consider:
+
+- ⭐ **Star** the repository
+- 🔗 **Share** with your team
+- 🐛 **Report** issues
+- 💡 **Suggest** improvements
+- 🤝 **Contribute** code
+
+---
+
+<div align="center">
+
+**Built with ❤️ for the Flutter and Dart communities**
+
+[🌐 Repository](https://github.com/ahmtydn/synq_manager) • [📚 Documentation](DOCUMENTATION.md) • [💬 Community](https://github.com/ahmtydn/synq_manager/discussions)
+
+</div>

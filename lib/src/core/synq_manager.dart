@@ -1,423 +1,379 @@
-// ignore_for_file: require_trailing_commas
-
 import 'dart:async';
 
-import 'package:synq_manager/synq_manager.dart';
+import 'package:rxdart/rxdart.dart';
+import 'package:synq_manager/src/adapters/local_adapter.dart';
+import 'package:synq_manager/src/adapters/remote_adapter.dart';
+import 'package:synq_manager/src/config/synq_config.dart';
+import 'package:synq_manager/src/core/conflict_detector.dart';
+import 'package:synq_manager/src/core/queue_manager.dart';
+import 'package:synq_manager/src/core/sync_engine.dart';
+import 'package:synq_manager/src/events/conflict_event.dart';
+import 'package:synq_manager/src/events/data_change_event.dart';
+import 'package:synq_manager/src/events/sync_event.dart';
+import 'package:synq_manager/src/events/user_switch_event.dart';
+import 'package:synq_manager/src/metrics/synq_metrics.dart';
+import 'package:synq_manager/src/middleware/synq_middleware.dart';
+import 'package:synq_manager/src/models/sync_operation.dart';
+import 'package:synq_manager/src/models/sync_result.dart';
+import 'package:synq_manager/src/models/syncable_entity.dart';
+import 'package:synq_manager/src/models/user_switch_result.dart';
+import 'package:synq_manager/src/resolvers/last_write_wins_resolver.dart';
+import 'package:synq_manager/src/resolvers/sync_conflict_resolver.dart';
+import 'package:synq_manager/src/utils/connectivity_checker.dart';
+import 'package:synq_manager/src/utils/logger.dart';
+import 'package:uuid/uuid.dart';
 
-/// Main singleton manager for synchronization operations
-class SynqManager<T extends DocumentSerializable> {
-  SynqManager._({
-    required this.instanceName,
-    required this.storageService,
-    required this.syncService,
-  });
+class SynqManager<T extends SyncableEntity> {
+  SynqManager({
+    required this.localAdapter,
+    required this.remoteAdapter,
+    SyncConflictResolver<T>? conflictResolver,
+    SynqConfig? synqConfig,
+    ConnectivityChecker? connectivity,
+    SynqLogger? initialLogger,
+  })  : conflictResolver = conflictResolver ?? LastWriteWinsResolver<T>(),
+        config = synqConfig ?? SynqConfig.defaultConfig(),
+        connectivityChecker = connectivity ?? ConnectivityChecker(),
+        logger = initialLogger ??
+            SynqLogger(
+              enabled: (synqConfig ?? SynqConfig.defaultConfig()).enableLogging,
+            ),
+        _eventController = StreamController<SyncEvent<T>>.broadcast(),
+        _statusSubject = BehaviorSubject<SyncStatusSnapshot>(),
+        _metrics = SynqMetrics();
 
-  /// Instance name for this manager
-  final String instanceName;
+  final LocalAdapter<T> localAdapter;
+  final RemoteAdapter<T> remoteAdapter;
+  final SyncConflictResolver<T> conflictResolver;
+  final SynqConfig config;
+  final ConnectivityChecker connectivityChecker;
+  final SynqLogger logger;
 
-  /// Storage service for local operations
-  final StorageService<T> storageService;
+  final StreamController<SyncEvent<T>> _eventController;
+  final BehaviorSubject<SyncStatusSnapshot> _statusSubject;
+  final List<SynqMiddleware<T>> _middlewares = [];
+  final Map<String, Timer> _autoSyncTimers = {};
+  final SynqMetrics _metrics;
+  late final QueueManager<T> _queueManager;
+  late final ConflictDetector<T> _conflictDetector;
+  SyncEngine<T>? _syncEngine;
+  SyncStatistics _statistics = const SyncStatistics();
 
-  /// Sync service for cloud operations
-  final SyncService<T> syncService;
+  bool _initialized = false;
 
-  /// Static instances cache
-  static final Map<String, SynqManager<dynamic>> _instances = {};
+  Stream<SyncEvent<T>> get eventStream => _eventController.stream;
 
-  /// Stream controller for unified events
-  final StreamController<SynqEvent<T>> _eventController =
-      StreamController<SynqEvent<T>>.broadcast();
+  Stream<DataChangeEvent<T>> get onDataChange => eventStream
+      .where((event) => event is DataChangeEvent<T>)
+      .cast<DataChangeEvent<T>>();
 
-  /// Subscriptions to underlying services
-  StreamSubscription<SynqEvent<T>>? _syncSubscription;
+  Stream<SyncStartedEvent<T>> get onSyncStarted => eventStream
+      .where((event) => event is SyncStartedEvent<T>)
+      .cast<SyncStartedEvent<T>>();
 
-  /// Whether the manager is initialized
-  bool _isInitialized = false;
+  Stream<SyncProgressEvent<T>> get onSyncProgress => eventStream
+      .where((event) => event is SyncProgressEvent<T>)
+      .cast<SyncProgressEvent<T>>();
 
-  /// Socket.io style event listeners instances
-  final Map<String, SynqListeners<T>> _listenerInstances = {};
+  Stream<SyncCompletedEvent<T>> get onSyncCompleted => eventStream
+      .where((event) => event is SyncCompletedEvent<T>)
+      .cast<SyncCompletedEvent<T>>();
 
-  Map<String, SynqListeners<T>> get listenerInstances =>
-      Map.unmodifiable(_listenerInstances);
+  Stream<ConflictDetectedEvent<T>> get onConflict => eventStream
+      .where((event) => event is ConflictDetectedEvent<T>)
+      .cast<ConflictDetectedEvent<T>>();
 
-  /// Creates or retrieves a SynqManager instance
-  ///
-  /// [instanceName] - Unique name for this manager instance
-  /// [config] - Configuration for synchronization
-  /// [callbacks] - Collection of callback functions (sync, fetch, conflict resolution, serialization)
-  static Future<SynqManager<T>> getInstance<T extends DocumentSerializable>({
-    required String instanceName,
-    required SynqCallbacks<T> callbacks,
-    SyncConfig? config,
-  }) async {
-    final key = '${instanceName}_$T';
+  Stream<UserSwitchedEvent<T>> get onUserSwitched => eventStream
+      .where((event) => event is UserSwitchedEvent<T>)
+      .cast<UserSwitchedEvent<T>>();
 
-    if (_instances.containsKey(key)) {
-      final existing = _instances[key]! as SynqManager<T>;
-      if (existing._isInitialized) {
-        return existing;
-      }
-    }
+  Stream<SyncErrorEvent<T>> get onError => eventStream
+      .where((event) => event is SyncErrorEvent<T>)
+      .cast<SyncErrorEvent<T>>();
 
-    // Create new instance
-    final finalConfig = config ?? const SyncConfig();
+  Stream<SyncStatusSnapshot> get syncStatusStream => _statusSubject.stream;
 
-    final storageService = await StorageService.create<T>(
-      boxName: instanceName,
-      encryptionKey: finalConfig.encryptionKey,
-      maxSizeMiB: finalConfig.maxStorageSize,
-      fromJson: callbacks.fromJson,
-      toJson: callbacks.toJson,
+  void addMiddleware(SynqMiddleware<T> middleware) =>
+      _middlewares.add(middleware);
+
+  Future<void> initialize() async {
+    if (_initialized) return;
+    await localAdapter.initialize();
+    _conflictDetector = ConflictDetector<T>();
+    _queueManager = QueueManager<T>(localAdapter: localAdapter, logger: logger);
+    _syncEngine = SyncEngine<T>(
+      localAdapter: localAdapter,
+      remoteAdapter: remoteAdapter,
+      conflictResolver: conflictResolver,
+      queueManager: _queueManager,
+      conflictDetector: _conflictDetector,
+      logger: logger,
+      config: config,
+      connectivityChecker: connectivityChecker,
+      eventController: _eventController,
+      statusSubject: _statusSubject,
+      middlewares: _middlewares,
     );
-
-    final syncService = await SyncService.create<T>(
-      storageService: storageService,
-      config: finalConfig,
-      cloudSyncFunction: callbacks.cloudSyncFunction,
-      cloudFetchFunction: callbacks.cloudFetchFunction,
-      conflictResolutionCallback: callbacks.conflictResolutionCallback,
-    );
-
-    final manager = SynqManager<T>._(
-      instanceName: instanceName,
-      storageService: storageService,
-      syncService: syncService,
-    );
-
-    await manager._initialize();
-    _instances[key] = manager;
-
-    return manager;
+    _initialized = true;
   }
 
-  /// Initializes the manager
-  Future<void> _initialize() async {
+  Future<List<T>> getAll(String userId) async {
+    _ensureInitialized();
+    final items = await localAdapter.getAll(userId);
+    return Future.wait(items.map(_transformAfterFetch));
+  }
+
+  Future<T?> getById(String id, String userId) async {
+    _ensureInitialized();
+    final item = await localAdapter.getById(id, userId);
+    if (item == null) return null;
+    return _transformAfterFetch(item);
+  }
+
+  Future<T> save(T item, String userId) async {
+    _ensureInitialized();
+    await _queueManager.initializeUser(userId);
+    final existing = await localAdapter.getById(item.id, userId);
+    final transformed = await _transformBeforeSave(item);
+    await localAdapter.save(transformed, userId);
+
+    final operation = SyncOperation<T>(
+      id: const Uuid().v4(),
+      userId: userId,
+      type: existing == null
+          ? SyncOperationType.create
+          : SyncOperationType.update,
+      data: transformed,
+      entityId: transformed.id,
+      timestamp: DateTime.now(),
+    );
+    await _queueManager.enqueue(userId, operation);
+
+    _eventController.add(
+      DataChangeEvent<T>(
+        userId: userId,
+        data: transformed,
+        changeType: existing == null ? ChangeType.created : ChangeType.updated,
+        source: DataSource.local,
+      ),
+    );
+    return transformed;
+  }
+
+  Future<void> delete(String id, String userId) async {
+    _ensureInitialized();
+    await _queueManager.initializeUser(userId);
+    final existing = await localAdapter.getById(id, userId);
+    if (existing == null) return;
+    await localAdapter.delete(id, userId);
+
+    final operation = SyncOperation<T>(
+      id: const Uuid().v4(),
+      userId: userId,
+      type: SyncOperationType.delete,
+      entityId: id,
+      timestamp: DateTime.now(),
+    );
+    await _queueManager.enqueue(userId, operation);
+
+    _eventController.add(
+      DataChangeEvent<T>(
+        userId: userId,
+        data: existing,
+        changeType: ChangeType.deleted,
+        source: DataSource.local,
+      ),
+    );
+  }
+
+  Future<SyncResult> sync(
+    String userId, {
+    bool force = false,
+    SyncOptions? options,
+  }) async {
+    _ensureInitialized();
+    await _queueManager.initializeUser(userId);
+    final engine = _syncEngine!;
+    final result =
+        await engine.synchronize(userId, force: force, options: options);
+    _updateStatistics(result);
+    _metrics.totalSyncOperations += 1;
+    _metrics.successfulSyncs += result.failedCount == 0 ? 1 : 0;
+    _metrics.failedSyncs += result.failedCount > 0 ? 1 : 0;
+    _metrics.conflictsDetected += result.conflictsResolved;
+    _metrics.activeUsers.add(userId);
+    return result;
+  }
+
+  Future<void> cancelSync(String userId) async {
+    _ensureInitialized();
+    _syncEngine?.cancel(userId);
+  }
+
+  Future<void> pauseSync(String userId) async {
+    _ensureInitialized();
+    await _syncEngine?.pause(userId);
+  }
+
+  Future<void> resumeSync(String userId) async {
+    _ensureInitialized();
+    _syncEngine?.resume(userId);
+  }
+
+  Future<SyncStatusSnapshot> getSyncSnapshot(String userId) async {
+    _ensureInitialized();
+    return _syncEngine!.getSnapshot(userId);
+  }
+
+  Future<SyncStatistics> getSyncStatistics(String userId) async {
+    _ensureInitialized();
+    return _statistics;
+  }
+
+  Future<UserSwitchResult> switchUser({
+    required String? oldUserId,
+    required String newUserId,
+    UserSwitchStrategy? strategy,
+  }) async {
+    _ensureInitialized();
+    final resolvedStrategy = strategy ?? config.defaultUserSwitchStrategy;
+    final hadUnsynced =
+        oldUserId != null && _queueManager.getPending(oldUserId).isNotEmpty;
+
     try {
-      _syncSubscription = syncService.events.listen(
-        _eventController.add,
-        onError: (Object error) => _eventController.add(
-          SynqEvent<T>.syncError(key: '__sync__', error: error),
-        ),
-      );
+      switch (resolvedStrategy) {
+        case UserSwitchStrategy.syncThenSwitch:
+          if (oldUserId != null) {
+            await sync(oldUserId, force: true);
+          }
+        case UserSwitchStrategy.clearAndFetch:
+          await localAdapter.clearUserData(newUserId);
+        case UserSwitchStrategy.promptIfUnsyncedData:
+          if (hadUnsynced) {
+            return UserSwitchResult.failure(
+              previousUserId: oldUserId,
+              newUserId: newUserId,
+              errorMessage: 'Unsynced data present for '
+                  '$oldUserId. Resolve before switching or '
+                  'choose a different strategy.',
+            );
+          }
+        case UserSwitchStrategy.keepLocal:
+          break;
+      }
 
-      _isInitialized = true;
-
+      await _queueManager.initializeUser(newUserId);
       _eventController.add(
-        SynqEvent<T>(
-          data: SyncData<T>.empty(),
-          type: SynqEventType.connected,
-          key: '__manager_ready__',
-          timestamp: DateTime.now().millisecondsSinceEpoch,
+        UserSwitchedEvent<T>(
+          previousUserId: oldUserId,
+          newUserId: newUserId,
+          hadUnsyncedData: hadUnsynced,
         ),
       );
-    } catch (error) {
-      _eventController.add(
-        SynqEvent<T>.syncError(
-          key: '__manager_init__',
-          error: error,
-        ),
+      _metrics.userSwitchCount += 1;
+      return UserSwitchResult.success(
+        previousUserId: oldUserId,
+        newUserId: newUserId,
+        unsyncedOperationsHandled: hadUnsynced ? 1 : 0,
       );
-      rethrow;
+    } on Exception catch (e) {
+      return UserSwitchResult.failure(
+        previousUserId: oldUserId,
+        newUserId: newUserId,
+        errorMessage: e.toString(),
+      );
     }
   }
 
-  /// Stream of all events from this manager
-  Stream<SynqEvent<T>> get events => _eventController.stream;
-
-  /// Stream of events filtered by type
-  Stream<SynqEvent<T>> onEvent(SynqEventType type) {
-    return events.where((event) => event.type == type);
+  void startAutoSync(String userId, {Duration? interval}) {
+    _ensureInitialized();
+    stopAutoSync(userId: userId);
+    final syncInterval = interval ?? config.autoSyncInterval;
+    _autoSyncTimers[userId] = Timer.periodic(syncInterval, (_) {
+      unawaited(sync(userId));
+    });
   }
 
-  /// Stream of data events (create, update, delete)
-  Stream<SynqEvent<T>> get onData => events.where(
-        (event) =>
-            event.type == SynqEventType.create ||
-            event.type == SynqEventType.update ||
-            event.type == SynqEventType.delete,
-      );
-
-  /// Stream of error events
-  Stream<SynqEvent<T>> get onError => onEvent(SynqEventType.syncError);
-
-  /// Stream of sync completion events
-  Stream<SynqEvent<T>> get onDone => onEvent(SynqEventType.syncComplete);
-
-  /// Stream of conflict events
-  Stream<SynqEvent<T>> get onConflict => onEvent(SynqEventType.conflict);
-
-  /// Stream of connection events
-  Stream<SynqEvent<T>> get onConnected => onEvent(SynqEventType.connected);
-
-  /// Stream of disconnection events
-  Stream<SynqEvent<T>> get onDisconnected =>
-      onEvent(SynqEventType.disconnected);
-
-  /// Whether the manager is ready for operations
-  bool get isReady => _isInitialized && storageService.isReady;
-
-  /// Current connectivity status
-  ConnectivityStatus get connectivityStatus => syncService.connectivityStatus;
-
-  /// Whether sync is currently in progress
-  bool get isSyncing => syncService.isSyncing;
-
-  /// Number of pending changes waiting for sync
-  int get pendingChangesCount => syncService.pendingChangesCount;
-
-  /// Active conflicts that need resolution
-  Map<String, DataConflict<T>> get activeConflicts =>
-      syncService.activeConflicts;
-
-  /// Last sync timestamp
-  int get lastSyncTimestamp => syncService.lastSyncTimestamp;
-
-  /// Storage statistics
-  Future<StorageStats> get storageStats => storageService.getStats();
-
-  /// Sync statistics
-  SyncStats get syncStats => syncService.getStats();
-
-  // ========== LOCAL STORAGE OPERATIONS ==========
-
-  /// Stores a value with the given key
-  Future<void> put(
-    String key,
-    T value, {
-    Map<String, dynamic>? metadata,
-  }) async {
-    _ensureReady();
-    await storageService.put(key, value, metadata: metadata);
+  void stopAutoSync({String? userId}) {
+    if (userId != null) {
+      _autoSyncTimers.remove(userId)?.cancel();
+      return;
+    }
+    for (final timer in _autoSyncTimers.values) {
+      timer.cancel();
+    }
+    _autoSyncTimers.clear();
   }
 
-  Future<void> add(
-    T value, {
-    Map<String, dynamic>? metadata,
-  }) async {
-    _ensureReady();
-    await storageService.add(value, metadata: metadata);
+  Future<SyncStatus> getSyncStatus(String userId) async {
+    final snapshot = await getSyncSnapshot(userId);
+    return snapshot.status;
   }
 
-  /// Retrieves a value for the given key
-  Future<T?> get(String key) async {
-    _ensureReady();
-    return storageService.getValue(key);
+  Future<int> getPendingCount(String userId) async {
+    _ensureInitialized();
+    await _queueManager.initializeUser(userId);
+    return _queueManager.getPending(userId).length;
   }
 
-  /// Updates an existing value
-  Future<void> update(
-    String key,
-    T value, {
-    Map<String, dynamic>? metadata,
-  }) async {
-    _ensureReady();
-    await storageService.update(key, value, metadata: metadata);
+  Future<void> retryFailedOperations(String userId) async {
+    _ensureInitialized();
+    await sync(userId, force: true);
   }
 
-  /// Deletes a value with the given key (soft delete)
-  Future<bool> delete(String key) async {
-    _ensureReady();
-    return storageService.delete(key);
+  Future<void> clearFailedOperations(String userId) async {
+    _ensureInitialized();
+    // For now failed operations remain in queue; we simply log.
+    logger.warn('clearFailedOperations is not yet implemented.');
   }
 
-  /// Permanently deletes a value with the given key (hard delete)
-  /// Warning: This bypasses sync and removes the item immediately
-  Future<bool> hardDelete(String key) async {
-    _ensureReady();
-    return storageService.hardDelete(key);
+  Future<void> dispose() async {
+    stopAutoSync();
+    await _eventController.close();
+    await _statusSubject.close();
+    await _queueManager.dispose();
+    await localAdapter.dispose();
   }
 
-  /// Retrieves all active values
-  Future<Map<String, T>> getAll() async {
-    _ensureReady();
-    return storageService.getAllValues();
+  Future<T> _transformBeforeSave(T item) async {
+    var transformed = item;
+    for (final middleware in _middlewares) {
+      transformed = await middleware.transformBeforeSave(transformed);
+    }
+    return transformed;
   }
 
-  /// Stores multiple key-value pairs
-  Future<void> putAll(
-    Map<String, T> entries, {
-    Map<String, dynamic>? metadata,
-  }) async {
-    _ensureReady();
-    await storageService.putAll(entries, metadata: metadata);
+  Future<T> _transformAfterFetch(T item) async {
+    var transformed = item;
+    for (final middleware in _middlewares) {
+      transformed = await middleware.transformAfterFetch(transformed);
+    }
+    return transformed;
   }
 
-  /// Clears all data
-  Future<void> clear() async {
-    _ensureReady();
-    await storageService.clear();
-  }
-
-  /// Gets all keys
-  List<String> get keys {
-    _ensureReady();
-    return storageService.keys;
-  }
-
-  /// Checks if a key exists
-  Future<bool> containsKey(String key) async {
-    _ensureReady();
-    final value = await get(key);
-    return value != null;
-  }
-
-  /// Number of items in storage
-  int get length {
-    _ensureReady();
-    return storageService.length;
-  }
-
-  /// Whether storage is empty
-  bool get isEmpty {
-    _ensureReady();
-    return storageService.isEmpty;
-  }
-
-  /// Whether storage is not empty
-  bool get isNotEmpty {
-    _ensureReady();
-    return storageService.isNotEmpty;
-  }
-
-  // ========== SYNCHRONIZATION OPERATIONS ==========
-
-  /// Manually triggers synchronization
-  Future<void> sync() async {
-    _ensureReady();
-    await syncService.sync();
-  }
-
-  /// Syncs specific keys
-  Future<void> syncKeys(List<String> keys) async {
-    _ensureReady();
-    await syncService.syncKeys(keys);
-  }
-
-  /// Resolves a conflict manually
-  Future<void> resolveConflict(
-    String key,
-    ConflictResolutionStrategy strategy, {
-    SyncData<T> Function(SyncData<T>, SyncData<T>)? customResolver,
-  }) async {
-    _ensureReady();
-    await syncService.resolveConflict(
-      key,
-      strategy,
-      customResolver: customResolver,
+  void _updateStatistics(SyncResult result) {
+    final totalSyncs = _statistics.totalSyncs + 1;
+    final totalDuration = _statistics.totalSyncDuration + result.duration;
+    final avgDuration = totalSyncs == 0
+        ? Duration.zero
+        : Duration(milliseconds: totalDuration.inMilliseconds ~/ totalSyncs);
+    _statistics = _statistics.copyWith(
+      totalSyncs: totalSyncs,
+      successfulSyncs:
+          _statistics.successfulSyncs + (result.failedCount == 0 ? 1 : 0),
+      failedSyncs: _statistics.failedSyncs + (result.failedCount > 0 ? 1 : 0),
+      conflictsDetected:
+          _statistics.conflictsDetected + result.conflictsResolved,
+      conflictsAutoResolved:
+          _statistics.conflictsAutoResolved + result.conflictsResolved,
+      averageDuration: avgDuration,
+      totalSyncDuration: totalDuration,
     );
   }
 
-  // ========== UTILITY METHODS ==========
-
-  /// Compacts storage to optimize space usage
-  Future<void> compact() async {
-    _ensureReady();
-    await storageService.compact();
-  }
-
-  /// Stream of changes for a specific key
-  Stream<SynqEvent<T>> watchKey(String key) {
-    return events.where((event) => event.key == key);
-  }
-
-  /// Stream of changes for multiple keys
-  Stream<SynqEvent<T>> watchKeys(List<String> keys) {
-    return events.where((event) => keys.contains(event.key));
-  }
-
-  /// Gets detailed sync data for a key (including metadata, version, etc.)
-  Future<SyncData<T>?> getSyncData(String key) async {
-    _ensureReady();
-    return storageService.get(key);
-  }
-
-  /// Gets items modified since a specific timestamp
-  Future<Map<String, SyncData<T>>> getModifiedSince(int timestamp) async {
-    _ensureReady();
-    return storageService.getModifiedSince(timestamp);
-  }
-
-  /// Checks if the manager is ready for operations
-  void _ensureReady() {
-    if (!isReady) {
-      throw StateError('SynqManager is not ready. Call getInstance() first.');
+  void _ensureInitialized() {
+    if (!_initialized || _syncEngine == null) {
+      throw StateError('SynqManager.initialize() must be called before use.');
     }
-  }
-
-  // ========== SOCKET.IO STYLE API ==========
-
-  /// Creates a new SynqListeners instance for fluent API
-  SynqListeners<T> on() {
-    final listenerId = DateTime.now().millisecondsSinceEpoch.toString();
-    final listeners = SynqListeners<T>(this);
-    _listenerInstances[listenerId] = listeners;
-    return listeners;
-  }
-
-  /// Socket.io style onInit - called when manager is ready with all data
-  SynqListeners<T> onInit(void Function(Map<String, T> data) callback) {
-    return on().onInit(callback);
-  }
-
-  /// Socket.io style onCreate - called when new data is created
-  SynqListeners<T> onCreate(void Function(String key, T data) callback) {
-    return on().onCreate(callback);
-  }
-
-  /// Socket.io style onUpdate - called when data is updated
-  SynqListeners<T> onUpdate(void Function(String key, T data) callback) {
-    return on().onUpdate(callback);
-  }
-
-  /// Socket.io style onDelete - called when data is deleted
-  SynqListeners<T> onDelete(void Function(String key) callback) {
-    return on().onDelete(callback);
-  }
-
-  /// Socket.io style onEvent - called for all events
-  SynqListeners<T> onEventCallback(void Function(SynqEvent<T> event) callback) {
-    return on().onEvent(callback);
-  }
-
-  /// Socket.io style onError - called when errors occur
-  SynqListeners<T> onErrorCallback(void Function(Object error) callback) {
-    return on().onError(callback);
-  }
-
-  // ========== LIFECYCLE MANAGEMENT ==========
-
-  /// Closes the manager and releases all resources
-  Future<void> close() async {
-    await _syncSubscription?.cancel();
-
-    await syncService.close();
-    await storageService.close();
-
-    await _eventController.close();
-
-    _instances.remove('${instanceName}_$T');
-    _isInitialized = false;
-  }
-
-  /// Closes all manager instances
-  static Future<void> closeAll() async {
-    final futures = <Future<void>>[];
-
-    for (final instance in _instances.values) {
-      futures.add(instance.close());
-    }
-
-    await Future.wait(futures);
-    _instances.clear();
-  }
-
-  /// Gets all active manager instances
-  static Map<String, SynqManager<dynamic>> get instances =>
-      Map.unmodifiable(_instances);
-
-  @override
-  String toString() {
-    return 'SynqManager<$T>(name: $instanceName, ready: $isReady, '
-        'syncing: $isSyncing, items: $length)';
   }
 }

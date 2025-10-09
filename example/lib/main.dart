@@ -1,14 +1,10 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:synq_manager/synq_manager.dart';
-import 'package:uuid/uuid.dart';
+import 'package:synq_manager_example/adapters/memory_local_adapter.dart';
+import 'package:synq_manager_example/adapters/memory_remote_adapter.dart';
+import 'package:synq_manager_example/models/task.dart';
 
-import 'models/note.dart';
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
+void main() {
   runApp(const MyApp());
 }
 
@@ -18,325 +14,284 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SynqManager Notes Demo',
+      title: 'SynqManager Example',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const NotesScreen(),
+      home: const TaskListScreen(),
     );
   }
 }
 
-class NotesScreen extends StatefulWidget {
-  const NotesScreen({super.key});
+class TaskListScreen extends StatefulWidget {
+  const TaskListScreen({super.key});
 
   @override
-  State<NotesScreen> createState() => _NotesScreenState();
+  State<TaskListScreen> createState() => _TaskListScreenState();
 }
 
-class _NotesScreenState extends State<NotesScreen> {
-  SynqManager<Note>? _synqManager;
-  List<Note> _notes = [];
+class _TaskListScreenState extends State<TaskListScreen> {
+  late SynqManager<Task> _manager;
+  final String _currentUserId = 'user123';
+  List<Task> _tasks = [];
   bool _isLoading = true;
   bool _isSyncing = false;
-  String _status = 'Initializing...';
-  final Uuid _uuid = const Uuid();
-  StreamSubscription<SynqEvent<Note>>? _eventSubscription;
+  String _syncStatus = 'Not synced';
+  int _pendingOperations = 0;
 
   @override
   void initState() {
     super.initState();
-    _initializeSynqManager();
+    _initializeManager();
   }
 
-  @override
-  void dispose() {
-    _eventSubscription?.cancel();
-    super.dispose();
-  }
+  Future<void> _initializeManager() async {
+    // Create adapters (using in-memory adapters for demo)
+    final localAdapter = MemoryLocalAdapter<Task>(
+      fromJson: Task.fromJson,
+    );
 
-  Future<void> _initializeSynqManager() async {
-    try {
+    final remoteAdapter = MemoryRemoteAdapter<Task>(
+      fromJson: Task.fromJson,
+    );
+
+    // Initialize manager
+    _manager = SynqManager<Task>(
+      localAdapter: localAdapter,
+      remoteAdapter: remoteAdapter,
+      synqConfig: SynqConfig(
+        autoSyncInterval: const Duration(seconds: 30),
+        enableLogging: true,
+        defaultConflictResolver: LastWriteWinsResolver<Task>(),
+      ),
+    );
+
+    await _manager.initialize();
+
+    // Listen to events
+    _manager.onDataChange.listen((event) {
+      print('Data changed: ${event.changeType} - ${event.data.title}');
+      _loadTasks();
+    });
+
+    _manager.onSyncProgress.listen((event) {
       setState(() {
-        _status = 'Starting SynqManager...';
+        _syncStatus = 'Syncing: ${event.completed}/${event.total}';
       });
+    });
 
-      _synqManager = await SynqManager.getInstance<Note>(
-        instanceName: 'notes_manager',
-        config: const SyncConfig(
-          syncInterval: Duration(seconds: 30),
-          encryptionKey: 'example_encryption_key_32_chars!',
-          enableBackgroundSync: true,
-          enableConflictResolution: true,
-        ),
-        callbacks: SynqCallbacks(
-          cloudFetchFunction: _mockCloudFetch,
-          cloudSyncFunction: _mockCloudSync,
-          fromJson: Note.fromJson,
-          toJson: (note) => note.toJson(),
+    _manager.onConflict.listen((event) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Conflict detected: ${event.context.type}'),
+          backgroundColor: Colors.orange,
         ),
       );
+    });
 
-      // Sadeleştirilmiş Socket.io style event listening
-      final listeners = _synqManager!.on();
-      listeners
-        ..onInit((data) {
-          // Initial data loaded
-          debugPrint('📥 Initial data loaded: ${data.length} items');
-          _refreshNotesFromData(data);
-        })
-        ..onCreate((key, data) {
-          // New data created
-          debugPrint('✨ Data created: $key');
-          _loadNotes();
-        })
-        ..onUpdate((key, data) {
-          // Data updated
-          debugPrint('📝 Data updated: $key');
-          _loadNotes();
-        })
-        ..onDelete((key) {
-          // Data deleted
-          debugPrint('🗑️ Data deleted: $key');
-          _loadNotes();
-        })
-        ..onError((error) {
-          setState(() {
-            _isSyncing = false;
-            _status = 'Error: $error';
-          });
-        })
-        ..onEvent((event) {
-          debugPrint('📊 Event: ${event.type} for key: ${event.key}');
+    // Start auto-sync
+    _manager.startAutoSync(_currentUserId);
 
-          switch (event.type) {
-            case SynqEventType.syncStart:
-              setState(() {
-                _isSyncing = true;
-                _status = 'Synchronization started...';
-              });
-              break;
-            case SynqEventType.syncComplete:
-              setState(() {
-                _isSyncing = false;
-                _status = 'Synchronization completed';
-              });
-              break;
-            default:
-              break;
-          }
-        });
-
-      setState(() {
-        _isLoading = false;
-        _status = 'Ready';
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _status = 'Error: $e';
-      });
-    }
+    await _loadTasks();
   }
 
-  void _refreshNotesFromData(Map<String, Note> data) {
-    final notes = data.values.toList();
-    notes.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  Future<void> _loadTasks() async {
+    final tasks = await _manager.getAll(_currentUserId);
+    final snapshot = await _manager.getSyncSnapshot(_currentUserId);
+
     setState(() {
-      _notes = notes;
+      _tasks = tasks.where((t) => !t.isDeleted).toList()
+        ..sort((a, b) => b.modifiedAt.compareTo(a.modifiedAt));
+      _isLoading = false;
+      _pendingOperations = snapshot.pendingOperations;
+      if (snapshot.status == SyncStatus.idle) {
+        _syncStatus = 'Synced';
+      }
     });
   }
 
-  Future<void> _loadNotes() async {
-    if (_synqManager == null) return;
-
-    try {
-      final notesData = await _synqManager!.getAll();
-      _refreshNotesFromData(notesData);
-    } catch (e) {
-      setState(() {
-        _status = 'Note loading error: $e';
-      });
-    }
-  }
-
-  // Mock cloud sync function - simulates sending data to a cloud service
-  Future<SyncResult<Note>> _mockCloudSync(
-    Map<String, SyncData<Note>> localChanges,
-    Map<String, String> headers,
-  ) async {
-    // Simulate network delay
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    // In a real app, this would send data to your backend
-    debugPrint('📤 Cloud sync: ${localChanges.length} changes');
-
-    // Simulate occasional network errors
-    if (DateTime.now().millisecond % 20 == 0) {
-      throw Exception('Simulated network error');
-    }
-
-    // Return successful sync result
-    return const SyncResult<Note>(
-      success: true,
-      remoteData: {},
-      conflicts: [],
-    );
-  }
-
-  // Mock cloud fetch function - simulates fetching data from a cloud service
-  Future<CloudFetchResponse<Note>> _mockCloudFetch(
-    int lastSyncTimestamp,
-    Map<String, String> headers,
-  ) async {
-    // Simulate network delay
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    // In a real app, this would fetch data from your backend
-    debugPrint('📥 Cloud fetch: lastSync=$lastSyncTimestamp');
-
-    // Return empty data for demo (in real app, return actual cloud data)
-    return const CloudFetchResponse<Note>(
-      data: {},
-      cloudUserId: 'demo_user_123',
-    );
-  }
-
-  Future<void> _addNote() async {
-    if (_synqManager == null) return;
-
-    final note = Note(
-      id: _uuid.v4(),
-      title: 'New Note',
-      content: 'Note content goes here...',
+  Future<void> _addTask(String title) async {
+    final task = Task(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      userId: _currentUserId,
+      title: title,
+      modifiedAt: DateTime.now(),
       createdAt: DateTime.now(),
-      color: NoteColor.values[_notes.length % NoteColor.values.length],
+      version: 'v1',
     );
+
+    await _manager.save(task, _currentUserId);
+    await _loadTasks();
+  }
+
+  Future<void> _toggleTask(Task task) async {
+    final updated = task.copyWith(
+      completed: !task.completed,
+      modifiedAt: DateTime.now(),
+      version: 'v${int.parse(task.version.substring(1)) + 1}',
+    );
+
+    await _manager.save(updated, _currentUserId);
+    await _loadTasks();
+  }
+
+  Future<void> _deleteTask(Task task) async {
+    await _manager.delete(task.id, _currentUserId);
+    await _loadTasks();
+  }
+
+  Future<void> _syncNow() async {
+    setState(() {
+      _isSyncing = true;
+      _syncStatus = 'Syncing...';
+    });
 
     try {
-      await _synqManager!.put(note.id, note);
+      final result = await _manager.sync(_currentUserId);
       setState(() {
-        _status = 'Note added';
+        _syncStatus =
+            'Synced: ${result.syncedCount} items, ${result.failedCount} failed';
       });
+
+      if (result.failedCount > 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${result.failedCount} items failed to sync'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     } catch (e) {
       setState(() {
-        _status = 'Note add error: $e';
+        _syncStatus = 'Sync failed: $e';
       });
+    } finally {
+      setState(() {
+        _isSyncing = false;
+      });
+      await _loadTasks();
     }
   }
 
-  Future<void> _editNote(Note note) async {
-    final result = await showDialog<Note>(
-      context: context,
-      builder: (context) => NoteEditDialog(note: note),
-    );
+  void _showAddTaskDialog() {
+    final controller = TextEditingController();
 
-    if (result != null && _synqManager != null) {
-      try {
-        final updatedNote = result.copyWith(updatedAt: DateTime.now());
-        await _synqManager!.update(updatedNote.id, updatedNote);
-        setState(() {
-          _status = 'Note updated';
-        });
-      } catch (e) {
-        setState(() {
-          _status = 'Note update error: $e';
-        });
-      }
-    }
-  }
-
-  Future<void> _deleteNote(Note note) async {
-    if (_synqManager == null) return;
-
-    final confirmed = await showDialog<bool>(
+    showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Note'),
-        content:
-            Text('Are you sure you want to delete the note "${note.title}"?'),
+        title: const Text('Add Task'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Task title',
+          ),
+          autofocus: true,
+          onSubmitted: (value) {
+            if (value.isNotEmpty) {
+              _addTask(value);
+              Navigator.pop(context);
+            }
+          },
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.isNotEmpty) {
+                _addTask(controller.text);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Add'),
           ),
         ],
       ),
     );
+  }
 
-    if (confirmed == true) {
-      try {
-        await _synqManager!.delete(note.id);
-        setState(() {
-          _status = 'Note deleted';
-        });
-      } catch (e) {
-        setState(() {
-          _status = 'Note delete error: $e';
-        });
+  @override
+  void dispose() {
+    _manager.stopAutoSync(userId: _currentUserId);
+    _manager.dispose();
+    super.dispose();
+  }
+
+  Future<void> _printAllData() async {
+    print('=== 🔍 DEBUG: ALL DATA ===');
+    print('Current User ID: $_currentUserId');
+    print('Total Tasks: ${_tasks.length}');
+    print('Pending Operations: $_pendingOperations');
+    print('Sync Status: $_syncStatus');
+    print('\n--- Tasks ---');
+    for (var i = 0; i < _tasks.length; i++) {
+      final task = _tasks[i];
+      print('[$i] Task:');
+      print('  ID: ${task.id}');
+      print('  Title: ${task.title}');
+      print('  Completed: ${task.completed}');
+      print('  User ID: ${task.userId}');
+      print('  Version: ${task.version}');
+      print('  Created: ${task.createdAt}');
+      print('  Modified: ${task.modifiedAt}');
+      print('  Deleted: ${task.isDeleted}');
+      print('  JSON: ${task.toJson()}');
+      print('');
+    }
+
+    // Get all tasks including deleted
+    final allTasks = await _manager.getAll(_currentUserId);
+    final deletedTasks = allTasks.where((t) => t.isDeleted).toList();
+    if (deletedTasks.isNotEmpty) {
+      print('--- Deleted Tasks (${deletedTasks.length}) ---');
+      for (final task in deletedTasks) {
+        print('  ${task.id}: ${task.title}');
       }
     }
-  }
 
-  Future<void> _manualSync() async {
-    if (_synqManager == null || _isSyncing) return;
+    // Get sync snapshot
+    final snapshot = await _manager.getSyncSnapshot(_currentUserId);
+    print('\n--- Sync Snapshot ---');
+    print('  User ID: ${snapshot.userId}');
+    print('  Status: ${snapshot.status}');
+    print('  Progress: ${snapshot.progress}');
+    print('  Pending Operations: ${snapshot.pendingOperations}');
+    print('  Completed Operations: ${snapshot.completedOperations}');
+    print('  Failed Operations: ${snapshot.failedOperations}');
+    print('  Last Started: ${snapshot.lastStartedAt}');
+    print('  Last Completed: ${snapshot.lastCompletedAt}');
+    print('  Has Unsynced Data: ${snapshot.hasUnsyncedData}');
+    print('  Has Failures: ${snapshot.hasFailures}');
 
-    try {
-      await _synqManager!.sync();
-    } catch (e) {
-      setState(() {
-        _status = 'Manual synchronization error: $e';
-      });
-    }
-  }
-
-  Color _getNoteColor(NoteColor color) {
-    switch (color) {
-      case NoteColor.blue:
-        return Colors.blue.shade100;
-      case NoteColor.green:
-        return Colors.green.shade100;
-      case NoteColor.yellow:
-        return Colors.yellow.shade100;
-      case NoteColor.red:
-        return Colors.red.shade100;
-      case NoteColor.purple:
-        return Colors.purple.shade100;
-      case NoteColor.orange:
-        return Colors.orange.shade100;
+    print('=== END DEBUG ===\n');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('📋 All data printed to console'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              Text(_status),
-            ],
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SynqManager Notes Demo'),
+        title: const Text('SynqManager Tasks'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
-            onPressed: _isSyncing ? null : _manualSync,
+            icon: const Icon(Icons.bug_report),
+            onPressed: _printAllData,
+            tooltip: 'Print all data',
+          ),
+          IconButton(
             icon: _isSyncing
                 ? const SizedBox(
                     width: 20,
@@ -344,264 +299,157 @@ class _NotesScreenState extends State<NotesScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.sync),
-            tooltip: 'Manual Synchronization',
+            onPressed: _isSyncing ? null : _syncNow,
+            tooltip: 'Sync now',
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Status bar
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(8),
-            color: Colors.grey.shade200,
-            child: Row(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: [
-                Icon(
-                  _synqManager?.isReady == true
-                      ? Icons.check_circle
-                      : Icons.error,
-                  color:
-                      _synqManager?.isReady == true ? Colors.green : Colors.red,
-                  size: 16,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                    child: Text(_status, style: const TextStyle(fontSize: 12))),
-                Text('${_notes.length} notes',
-                    style: const TextStyle(fontSize: 12)),
-              ],
-            ),
-          ),
-          // Notes list
-          Expanded(
-            child: _notes.isEmpty
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.note_add, size: 64, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text('No notes yet',
-                            style: TextStyle(fontSize: 18, color: Colors.grey)),
-                        Text('Tap the + button to add a new note'),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(8),
-                    itemCount: _notes.length,
-                    itemBuilder: (context, index) {
-                      final note = _notes[index];
-                      return Card(
-                        color: _getNoteColor(note.color),
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          title: Text(
-                            note.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: note.isImportant
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
+                // Status bar
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  color: Colors.grey[200],
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            _pendingOperations > 0
+                                ? Icons.cloud_upload
+                                : Icons.cloud_done,
+                            size: 16,
+                            color: _pendingOperations > 0
+                                ? Colors.orange
+                                : Colors.green,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _syncStatus,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                      if (_pendingOperations > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.orange,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '$_pendingOperations pending',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                note.content,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Created: ${note.createdAt.day}/${note.createdAt.month}/${note.createdAt.year}',
-                                style: const TextStyle(
-                                    fontSize: 12, color: Colors.grey),
-                              ),
-                            ],
-                          ),
-                          leading: note.isImportant
-                              ? const Icon(Icons.star, color: Colors.orange)
-                              : null,
-                          trailing: PopupMenuButton<String>(
-                            onSelected: (value) {
-                              switch (value) {
-                                case 'edit':
-                                  _editNote(note);
-                                  break;
-                                case 'delete':
-                                  _deleteNote(note);
-                                  break;
-                              }
-                            },
-                            itemBuilder: (context) => [
-                              const PopupMenuItem(
-                                value: 'edit',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.edit),
-                                    SizedBox(width: 8),
-                                    Text('Edit'),
-                                  ],
-                                ),
-                              ),
-                              const PopupMenuItem(
-                                value: 'delete',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.delete, color: Colors.red),
-                                    SizedBox(width: 8),
-                                    Text('Delete'),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          onTap: () => _editNote(note),
                         ),
-                      );
-                    },
+                    ],
                   ),
-          ),
-        ],
-      ),
+                ),
+                // Task list
+                Expanded(
+                  child: _tasks.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.task_alt,
+                                size: 64,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No tasks yet',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Tap + to add your first task',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _tasks.length,
+                          itemBuilder: (context, index) {
+                            final task = _tasks[index];
+                            return Dismissible(
+                              key: Key(task.id),
+                              direction: DismissDirection.endToStart,
+                              background: Container(
+                                color: Colors.red,
+                                alignment: Alignment.centerRight,
+                                padding: const EdgeInsets.only(right: 16),
+                                child: const Icon(
+                                  Icons.delete,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              onDismissed: (_) => _deleteTask(task),
+                              child: ListTile(
+                                leading: Checkbox(
+                                  value: task.completed,
+                                  onChanged: (_) => _toggleTask(task),
+                                ),
+                                title: Text(
+                                  task.title,
+                                  style: TextStyle(
+                                    decoration: task.completed
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                    color: task.completed ? Colors.grey : null,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  'Modified: ${_formatDate(task.modifiedAt)}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  onPressed: () => _deleteTask(task),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _addNote,
-        tooltip: 'Add New Note',
+        onPressed: _showAddTaskDialog,
+        tooltip: 'Add Task',
         child: const Icon(Icons.add),
       ),
     );
   }
-}
 
-class NoteEditDialog extends StatefulWidget {
-  const NoteEditDialog({super.key, required this.note});
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
 
-  final Note note;
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays < 1) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
 
-  @override
-  State<NoteEditDialog> createState() => _NoteEditDialogState();
-}
-
-class _NoteEditDialogState extends State<NoteEditDialog> {
-  late TextEditingController _titleController;
-  late TextEditingController _contentController;
-  late NoteColor _selectedColor;
-  late bool _isImportant;
-
-  @override
-  void initState() {
-    super.initState();
-    _titleController = TextEditingController(text: widget.note.title);
-    _contentController = TextEditingController(text: widget.note.content);
-    _selectedColor = widget.note.color;
-    _isImportant = widget.note.isImportant;
-  }
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _contentController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Edit Note'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: 'Title',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _contentController,
-              decoration: const InputDecoration(
-                labelText: 'Content',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 4,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const Text('Color: '),
-                ...NoteColor.values.map((color) => GestureDetector(
-                      onTap: () => setState(() => _selectedColor = color),
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        margin: const EdgeInsets.only(right: 8),
-                        decoration: BoxDecoration(
-                          color: _getNoteColor(color),
-                          border: Border.all(
-                            color: _selectedColor == color
-                                ? Colors.black
-                                : Colors.transparent,
-                            width: 2,
-                          ),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    )),
-              ],
-            ),
-            const SizedBox(height: 16),
-            CheckboxListTile(
-              title: const Text('Important'),
-              value: _isImportant,
-              onChanged: (value) =>
-                  setState(() => _isImportant = value ?? false),
-              controlAffinity: ListTileControlAffinity.leading,
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () {
-            final updatedNote = widget.note.copyWith(
-              title: _titleController.text.trim(),
-              content: _contentController.text.trim(),
-              color: _selectedColor,
-              isImportant: _isImportant,
-            );
-            Navigator.pop(context, updatedNote);
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
-
-  Color _getNoteColor(NoteColor color) {
-    switch (color) {
-      case NoteColor.blue:
-        return Colors.blue.shade300;
-      case NoteColor.green:
-        return Colors.green.shade300;
-      case NoteColor.yellow:
-        return Colors.yellow.shade300;
-      case NoteColor.red:
-        return Colors.red.shade300;
-      case NoteColor.purple:
-        return Colors.purple.shade300;
-      case NoteColor.orange:
-        return Colors.orange.shade300;
-    }
+    return '${date.day}/${date.month}/${date.year}';
   }
 }

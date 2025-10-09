@@ -45,22 +45,5 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	
-	<!-- Background processing capabilities for WorkManager -->
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>background-processing</string>
-		<string>background-fetch</string>
-	</array>
-	
-	<!-- Background task scheduler identifiers for WorkManager -->
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>be.tramckrijte.workmanager.BackgroundService</string>
-	</array>
-	
-	<!-- Minimum iOS version -->
-	<key>MinimumOSVersion</key>
-	<string>12.0</string>
 </dict>
 </plist>
