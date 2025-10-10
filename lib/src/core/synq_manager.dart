@@ -130,7 +130,7 @@ class SynqManager<T extends SyncableEntity> {
             data: initialData,
           ),
         );
-      } on Exception catch (e, stack) {
+      } on Object catch (e, stack) {
         _eventController.add(
           SyncErrorEvent<T>(
             userId: '',
@@ -390,7 +390,7 @@ class SynqManager<T extends SyncableEntity> {
         newUserId: newUserId,
         unsyncedOperationsHandled: hadUnsynced ? 1 : 0,
       );
-    } on Exception catch (e) {
+    } on Object catch (e) {
       return UserSwitchResult.failure(
         previousUserId: oldUserId,
         newUserId: newUserId,

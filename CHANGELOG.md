@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.1.3]
+### Fixed
+- 🐛 **Critical Error Handling**: Fixed catch blocks to properly handle both `Exception` and `Error` types (e.g., `UnimplementedError`)
+- ✅ **Lint Compliance**: Updated all catch blocks to use `on Object catch` syntax to comply with Dart linting rules
+- 🔧 **onInit Stream**: Error handling in initialization now properly catches all throwable types including `UnimplementedError`
+- 🔧 **switchUser**: Error handling in user switching now properly catches all throwable types
+
+### Improved
+- 💪 **Robustness**: Enhanced error resilience by catching all error types, not just exceptions
+
 ## [2.1.2]
 ### Fixed
 - 🛡️ **Error Handling in onInit**: Added try-catch block in `onInit` stream to gracefully handle errors during initial data fetch
