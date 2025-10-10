@@ -9,6 +9,7 @@ import 'package:synq_manager/src/core/queue_manager.dart';
 import 'package:synq_manager/src/core/sync_engine.dart';
 import 'package:synq_manager/src/events/conflict_event.dart';
 import 'package:synq_manager/src/events/data_change_event.dart';
+import 'package:synq_manager/src/events/initial_sync_event.dart';
 import 'package:synq_manager/src/events/sync_event.dart';
 import 'package:synq_manager/src/events/user_switch_event.dart';
 import 'package:synq_manager/src/metrics/synq_metrics.dart';
@@ -68,6 +69,7 @@ class SynqManager<T extends SyncableEntity> {
   final List<SynqMiddleware<T>> _middlewares = [];
   final Map<String, Timer> _autoSyncTimers = {};
   final SynqMetrics _metrics;
+  final Set<String> _listeningUsers = {};
   late final QueueManager<T> _queueManager;
   late final ConflictDetector<T> _conflictDetector;
   SyncEngine<T>? _syncEngine;
@@ -78,10 +80,37 @@ class SynqManager<T extends SyncableEntity> {
   /// Stream of all sync events.
   Stream<SyncEvent<T>> get eventStream => _eventController.stream;
 
+  /// Begins listening for events for the specified [userId].
+  ///
+  /// Emits an [InitialSyncEvent] through [onInit] containing the complete
+  /// dataset for the user the first time this is invoked per user. Consumers
+  /// should subscribe to [onInit] (and any other desired streams) before
+  /// calling this method to ensure the initial payload is received.
+  Future<void> listen(String userId, {bool forceRefresh = false}) async {
+    _ensureInitialized();
+    await _queueManager.initializeUser(userId);
+    if (!forceRefresh && _listeningUsers.contains(userId)) {
+      return;
+    }
+    final initialData = await getAll(userId);
+    _eventController.add(
+      InitialSyncEvent<T>(
+        userId: userId,
+        data: initialData,
+      ),
+    );
+    _listeningUsers.add(userId);
+  }
+
   /// Stream of data change events.
   Stream<DataChangeEvent<T>> get onDataChange => eventStream
       .where((event) => event is DataChangeEvent<T>)
       .cast<DataChangeEvent<T>>();
+
+  /// Stream of initialization payloads emitted when [listen] is invoked.
+  Stream<InitialSyncEvent<T>> get onInit => eventStream
+      .where((event) => event is InitialSyncEvent<T>)
+      .cast<InitialSyncEvent<T>>();
 
   /// Stream of sync started events.
   Stream<SyncStartedEvent<T>> get onSyncStarted => eventStream
@@ -399,6 +428,7 @@ class SynqManager<T extends SyncableEntity> {
   /// Should be called when the sync manager is no longer needed.
   Future<void> dispose() async {
     stopAutoSync();
+    _listeningUsers.clear();
     await _eventController.close();
     await _statusSubject.close();
     await _queueManager.dispose();

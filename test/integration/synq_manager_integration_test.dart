@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:synq_manager/src/config/synq_config.dart';
 import 'package:synq_manager/src/core/synq_manager.dart';
 import 'package:synq_manager/src/events/data_change_event.dart';
+import 'package:synq_manager/src/events/initial_sync_event.dart';
 import 'package:synq_manager/src/events/sync_event.dart';
 import 'package:synq_manager/src/models/sync_result.dart';
 import 'package:synq_manager/src/resolvers/last_write_wins_resolver.dart';
@@ -19,12 +20,14 @@ void main() {
     late MockRemoteAdapter<TestEntity> remoteAdapter;
     late MockConnectivityChecker connectivityChecker;
     final events = <SyncEvent<TestEntity>>[];
+    final initEvents = <InitialSyncEvent<TestEntity>>[];
 
     setUp(() async {
       localAdapter = MockLocalAdapter<TestEntity>();
       remoteAdapter = MockRemoteAdapter<TestEntity>();
       connectivityChecker = MockConnectivityChecker();
       events.clear();
+      initEvents.clear();
 
       manager = SynqManager<TestEntity>(
         localAdapter: localAdapter,
@@ -39,6 +42,8 @@ void main() {
       await manager.initialize();
 
       manager.eventStream.listen(events.add);
+      manager.onInit.listen(initEvents.add);
+      await manager.listen('user1');
     });
 
     tearDown(() async {
@@ -46,6 +51,8 @@ void main() {
     });
 
     test('saves entity locally and enqueues sync operation', () async {
+      expect(initEvents, hasLength(1));
+      expect(initEvents.single.data, isEmpty);
       final entity = TestEntity(
         id: 'entity1',
         userId: 'user1',
@@ -344,6 +351,26 @@ void main() {
       final retrieved = await manager.getById('nonexistent', 'user1');
 
       expect(retrieved, isNull);
+    });
+
+    test('listen emits snapshot when forceRefresh is true', () async {
+      final entity = TestEntity(
+        id: 'entity-initial',
+        userId: 'user1',
+        name: 'Snapshot Item',
+        value: 21,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+
+      await localAdapter.save(entity, 'user1');
+
+      await manager.listen('user1', forceRefresh: true);
+
+      expect(initEvents, isNotEmpty);
+      expect(initEvents.last.data, hasLength(1));
+      expect(initEvents.last.data.first.name, 'Snapshot Item');
     });
   });
 }

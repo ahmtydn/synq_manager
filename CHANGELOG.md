@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.0]
+### Added
+- ⚡ **Socket-Style Listener API**: Introduced `listen(userId)` on `SynqManager` to deliver an initial dataset snapshot followed by live events through existing streams.
+
+### Changed
+- 🔄 **Initialization Events**: New `onInit` stream emits `InitialSyncEvent` payloads to mirror Socket.IO-style handshake semantics; consumers now receive the full dataset before incremental updates.
+- 🧪 **Integration Coverage**: Updated integration tests to validate the new listener flow and force-refresh behavior.
+
 ## [2.0.2]
 ### Fixed
 - Minor bug fixes and improvements

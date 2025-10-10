@@ -1,6 +1,5 @@
 import 'package:synq_manager/src/adapters/local_adapter.dart';
 import 'package:synq_manager/src/adapters/remote_adapter.dart';
-import 'package:synq_manager/src/models/remote_change_event.dart';
 import 'package:synq_manager/src/models/sync_metadata.dart';
 import 'package:synq_manager/src/models/sync_operation.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
@@ -170,9 +169,6 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
 
   @override
   Future<bool> isConnected() async => connected;
-
-  @override
-  Stream<RemoteChangeEvent<T>>? subscribeToChanges(String userId) => null;
 
   void addRemoteItem(String userId, T item) {
     _remoteStorage.putIfAbsent(userId, () => {})[item.id] = item;

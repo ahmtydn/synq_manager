@@ -1,6 +1,5 @@
 import 'package:synq_manager/src/models/conflict_context.dart';
 import 'package:synq_manager/src/models/conflict_resolution.dart';
-import 'package:synq_manager/src/models/remote_change_event.dart';
 import 'package:synq_manager/src/models/sync_metadata.dart';
 import 'package:synq_manager/src/models/sync_operation.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
@@ -32,9 +31,6 @@ abstract class RemoteAdapter<T extends SyncableEntity> {
 
   /// Determine whether remote connectivity is currently available.
   Future<bool> isConnected();
-
-  /// Subscribe to remote change notifications to power real-time syncing.
-  Stream<RemoteChangeEvent<T>>? subscribeToChanges(String userId);
 }
 
 /// Result of a batch sync invocation that captures successes and failures.

@@ -130,10 +130,4 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
   Future<bool> isConnected() async {
     return _isConnected;
   }
-
-  @override
-  Stream<RemoteChangeEvent<T>>? subscribeToChanges(String userId) {
-    // Not implemented for demo - return null to disable real-time sync
-    return null;
-  }
 }

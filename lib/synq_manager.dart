@@ -7,6 +7,7 @@ export 'src/core/sync_engine.dart';
 export 'src/core/synq_manager.dart';
 export 'src/events/conflict_event.dart';
 export 'src/events/data_change_event.dart';
+export 'src/events/initial_sync_event.dart';
 export 'src/events/sync_event.dart';
 export 'src/events/user_switch_event.dart';
 export 'src/health/health_check.dart';
