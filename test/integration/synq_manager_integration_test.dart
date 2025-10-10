@@ -43,7 +43,6 @@ void main() {
 
       manager.eventStream.listen(events.add);
       manager.onInit.listen(initEvents.add);
-      await manager.listen('user1');
     });
 
     tearDown(() async {
@@ -65,7 +64,7 @@ void main() {
 
       await manager.save(entity, 'user1');
 
-      final localItems = await localAdapter.getAll('user1');
+      final localItems = await localAdapter.getAll(userId: 'user1');
       expect(localItems, hasLength(1));
       expect(localItems.first.name, 'Test Item');
 
@@ -122,7 +121,7 @@ void main() {
 
       expect(result.isSuccess, isTrue);
 
-      final localItems = await manager.getAll('user1');
+      final localItems = await manager.getAll(userId: 'user1');
       expect(localItems, hasLength(1));
       expect(localItems.first.name, 'Remote Item');
       expect(localItems.first.value, 100);
@@ -159,7 +158,7 @@ void main() {
       expect(result.isSuccess, isTrue);
       expect(result.conflictsResolved, greaterThan(0));
 
-      final localItems = await manager.getAll('user1');
+      final localItems = await manager.getAll(userId: 'user1');
       expect(localItems.first.name, 'Remote Version');
       expect(localItems.first.value, 100);
     });
@@ -182,7 +181,7 @@ void main() {
 
       await manager.delete('entity1', 'user1');
 
-      expect(await manager.getAll('user1'), isEmpty);
+      expect(await manager.getAll(userId: 'user1'), isEmpty);
 
       await manager.sync('user1');
 
@@ -273,8 +272,8 @@ void main() {
 
       await manager.save(user2Entity, 'user2');
 
-      final user1Items = await manager.getAll('user1');
-      final user2Items = await manager.getAll('user2');
+      final user1Items = await manager.getAll(userId: 'user1');
+      final user2Items = await manager.getAll(userId: 'user2');
 
       expect(user1Items, hasLength(1));
       expect(user2Items, hasLength(1));
@@ -351,26 +350,6 @@ void main() {
       final retrieved = await manager.getById('nonexistent', 'user1');
 
       expect(retrieved, isNull);
-    });
-
-    test('listen emits snapshot when forceRefresh is true', () async {
-      final entity = TestEntity(
-        id: 'entity-initial',
-        userId: 'user1',
-        name: 'Snapshot Item',
-        value: 21,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
-
-      await localAdapter.save(entity, 'user1');
-
-      await manager.listen('user1', forceRefresh: true);
-
-      expect(initEvents, isNotEmpty);
-      expect(initEvents.last.data, hasLength(1));
-      expect(initEvents.last.data.first.name, 'Snapshot Item');
     });
   });
 }

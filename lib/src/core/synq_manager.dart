@@ -69,7 +69,6 @@ class SynqManager<T extends SyncableEntity> {
   final List<SynqMiddleware<T>> _middlewares = [];
   final Map<String, Timer> _autoSyncTimers = {};
   final SynqMetrics _metrics;
-  final Set<String> _listeningUsers = {};
   late final QueueManager<T> _queueManager;
   late final ConflictDetector<T> _conflictDetector;
   SyncEngine<T>? _syncEngine;
@@ -80,37 +79,57 @@ class SynqManager<T extends SyncableEntity> {
   /// Stream of all sync events.
   Stream<SyncEvent<T>> get eventStream => _eventController.stream;
 
-  /// Begins listening for events for the specified [userId].
-  ///
-  /// Emits an [InitialSyncEvent] through [onInit] containing the complete
-  /// dataset for the user the first time this is invoked per user. Consumers
-  /// should subscribe to [onInit] (and any other desired streams) before
-  /// calling this method to ensure the initial payload is received.
-  Future<void> listen(String userId, {bool forceRefresh = false}) async {
-    _ensureInitialized();
-    await _queueManager.initializeUser(userId);
-    if (!forceRefresh && _listeningUsers.contains(userId)) {
-      return;
-    }
-    final initialData = await getAll(userId);
-    _eventController.add(
-      InitialSyncEvent<T>(
-        userId: userId,
-        data: initialData,
-      ),
-    );
-    _listeningUsers.add(userId);
-  }
-
   /// Stream of data change events.
   Stream<DataChangeEvent<T>> get onDataChange => eventStream
       .where((event) => event is DataChangeEvent<T>)
       .cast<DataChangeEvent<T>>();
 
-  /// Stream of initialization payloads emitted when [listen] is invoked.
-  Stream<InitialSyncEvent<T>> get onInit => eventStream
-      .where((event) => event is InitialSyncEvent<T>)
-      .cast<InitialSyncEvent<T>>();
+  /// Stream of initialization payloads that emits initial data automatically.
+  ///
+  /// This stream automatically fetches all existing entities from local storage
+  /// and emits an [InitialSyncEvent] when you first subscribe to it. This is
+  /// useful for initializing your UI state when the application starts.
+  ///
+  /// **Behavior:**
+  /// - On first subscription, automatically fetches all local data
+  /// - Emits an [InitialSyncEvent] containing all locally stored entities
+  /// - If no data exists, emits an event with an empty list
+  /// - The userId in the event is taken from the first entity if available,
+  ///   otherwise an empty string
+  ///
+  /// **Important:** Ensure [initialize] is called before subscribing to this
+  /// stream, otherwise a [StateError] will be thrown.
+  ///
+  /// **Usage:**
+  /// ```dart
+  /// await synqManager.initialize();
+  ///
+  /// // Simply subscribe - initial data loads automatically!
+  /// synqManager.onInit.listen((event) {
+  ///   print('Initial data loaded: ${event.data.length} items');
+  ///   print('User ID: ${event.userId}');
+  ///   // Update your UI with initial data
+  /// });
+  /// ```
+  ///
+  /// See also:
+  /// - [InitialSyncEvent] for the event structure
+  /// - [onDataChange] for subsequent data changes
+  Stream<InitialSyncEvent<T>> get onInit {
+    return eventStream
+        .where((event) => event is InitialSyncEvent<T>)
+        .cast<InitialSyncEvent<T>>()
+        .doOnListen(() async {
+      _ensureInitialized();
+      final initialData = await getAll();
+      _eventController.add(
+        InitialSyncEvent<T>(
+          userId: initialData.isNotEmpty ? initialData.first.userId : '',
+          data: initialData,
+        ),
+      );
+    });
+  }
 
   /// Stream of sync started events.
   Stream<SyncStartedEvent<T>> get onSyncStarted => eventStream
@@ -174,9 +193,9 @@ class SynqManager<T extends SyncableEntity> {
   /// Retrieves all entities for a specific user from local storage.
   ///
   /// Returns a list of entities after applying post-fetch transformations.
-  Future<List<T>> getAll(String userId) async {
+  Future<List<T>> getAll({String? userId}) async {
     _ensureInitialized();
-    final items = await localAdapter.getAll(userId);
+    final items = await localAdapter.getAll(userId: userId);
     return Future.wait(items.map(_transformAfterFetch));
   }
 
@@ -428,7 +447,6 @@ class SynqManager<T extends SyncableEntity> {
   /// Should be called when the sync manager is no longer needed.
   Future<void> dispose() async {
     stopAutoSync();
-    _listeningUsers.clear();
     await _eventController.close();
     await _statusSubject.close();
     await _queueManager.dispose();

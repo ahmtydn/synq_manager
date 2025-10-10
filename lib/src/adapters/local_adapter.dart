@@ -9,7 +9,7 @@ abstract class LocalAdapter<T extends SyncableEntity> {
   Future<void> initialize();
 
   /// Fetch all items belonging to the given user.
-  Future<List<T>> getAll(String userId);
+  Future<List<T>> getAll({String? userId});
 
   /// Fetch a single item by its identifier for the given user.
   Future<T?> getById(String id, String userId);

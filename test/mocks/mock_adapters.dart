@@ -13,8 +13,11 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   Future<void> initialize() async {}
 
   @override
-  Future<List<T>> getAll(String userId) async {
-    return _storage[userId]?.values.toList() ?? [];
+  Future<List<T>> getAll({String? userId}) async {
+    if (userId != null) {
+      return _storage[userId]?.values.toList() ?? [];
+    }
+    return _storage.values.expand((map) => map.values).toList();
   }
 
   @override

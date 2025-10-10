@@ -214,7 +214,7 @@ class SyncEngine<T extends SyncableEntity> {
         conflictsResolved += remoteSummary.remoteConflicts;
       }
 
-      final currentItems = await localAdapter.getAll(userId);
+      final currentItems = await localAdapter.getAll(userId: userId);
       final metadata = SyncMetadata(
         userId: userId,
         lastSyncTime: DateTime.now(),
@@ -637,7 +637,7 @@ class SyncEngine<T extends SyncableEntity> {
             .toSet();
 
     var deletions = 0;
-    final localItems = await localAdapter.getAll(userId);
+    final localItems = await localAdapter.getAll(userId: userId);
     for (final localItem in localItems) {
       _ensureNotTimedOut(deadline);
       if (remoteIds.contains(localItem.id)) {

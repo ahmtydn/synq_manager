@@ -100,7 +100,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
   }
 
   Future<void> _loadTasks() async {
-    final tasks = await _manager.getAll(_currentUserId);
+    final tasks = await _manager.getAll(userId: _currentUserId);
     final snapshot = await _manager.getSyncSnapshot(_currentUserId);
 
     setState(() {
@@ -250,7 +250,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
     }
 
     // Get all tasks including deleted
-    final allTasks = await _manager.getAll(_currentUserId);
+    final allTasks = await _manager.getAll(userId: _currentUserId);
     final deletedTasks = allTasks.where((t) => t.isDeleted).toList();
     if (deletedTasks.isNotEmpty) {
       print('--- Deleted Tasks (${deletedTasks.length}) ---');
