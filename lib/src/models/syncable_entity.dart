@@ -20,18 +20,4 @@ abstract class SyncableEntity {
 
   /// Convert this entity to a serializable representation.
   Map<String, dynamic> toJson();
-
-  /// Create a copy with optional overrides.
-  SyncableEntity copyWith({
-    String? userId,
-    DateTime? modifiedAt,
-    int? version,
-    bool? isDeleted,
-  });
-
-  /// Factory intended to be overridden by concrete implementations.
-  static SyncableEntity fromJson(Map<String, dynamic> json) =>
-      throw UnimplementedError(
-        'Override SyncableEntity.fromJson in your entity implementation.',
-      );
 }

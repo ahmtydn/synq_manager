@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.2]
+### Fixed
+- Minor bug fixes and improvements
+
+
 ## [2.0.1]
 ### Changed
 - 🔢 **Version-Driven Conflict Resolution**: `LastWriteWinsResolver` now prefers higher numeric versions before falling back to timestamps, enabling accurate ordering after migrating `version` fields to integers.

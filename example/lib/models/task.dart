@@ -14,6 +14,7 @@ class Task implements SyncableEntity {
     this.isDeleted = false,
   });
 
+  @override
   factory Task.fromJson(Map<String, dynamic> json) => Task(
         id: json['id'] as String,
         userId: json['userId'] as String,
@@ -24,6 +25,7 @@ class Task implements SyncableEntity {
         version: json['version'] as int,
         isDeleted: json['isDeleted'] as bool? ?? false,
       );
+
   @override
   final String id;
 
@@ -57,7 +59,6 @@ class Task implements SyncableEntity {
         'isDeleted': isDeleted,
       };
 
-  @override
   Task copyWith({
     String? userId,
     DateTime? modifiedAt,

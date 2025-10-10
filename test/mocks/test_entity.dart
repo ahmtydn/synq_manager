@@ -58,7 +58,6 @@ class TestEntity implements SyncableEntity {
         'isDeleted': isDeleted,
       };
 
-  @override
   TestEntity copyWith({
     String? id,
     String? userId,
