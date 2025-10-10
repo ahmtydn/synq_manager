@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.1]
+### Changed
+- 🔢 **Version-Driven Conflict Resolution**: `LastWriteWinsResolver` now prefers higher numeric versions before falling back to timestamps, enabling accurate ordering after migrating `version` fields to integers.
+- 🧪 **Improved Test Coverage**: Added regression tests ensuring version comparison precedence and timestamp fallback behavior.
+
 ## [2.0.0]
 ### Breaking Changes
 - ⚠️ **Major Version Bump**: Significant updates and improvements warranting a major version increase

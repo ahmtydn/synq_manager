@@ -15,14 +15,14 @@ void main() {
       resolver = LastWriteWinsResolver<TestEntity>();
     });
 
-    test('chooses remote when remote is newer', () async {
+    test('chooses remote when remote has higher version', () async {
       final baseTime = DateTime.now();
       final local = TestEntity(
         id: 'entity1',
         userId: 'user1',
         name: 'Local',
         value: 42,
-        modifiedAt: baseTime,
+        modifiedAt: baseTime.add(const Duration(seconds: 10)),
         createdAt: baseTime,
         version: 1,
       );
@@ -32,7 +32,7 @@ void main() {
         userId: 'user1',
         name: 'Remote',
         value: 100,
-        modifiedAt: baseTime.add(const Duration(seconds: 10)),
+        modifiedAt: baseTime,
         createdAt: baseTime,
         version: 2,
       );
@@ -54,16 +54,16 @@ void main() {
       expect(resolution.resolvedData, equals(remote));
     });
 
-    test('chooses local when local is newer', () async {
+    test('chooses local when local has higher version', () async {
       final baseTime = DateTime.now();
       final local = TestEntity(
         id: 'entity1',
         userId: 'user1',
         name: 'Local',
         value: 42,
-        modifiedAt: baseTime.add(const Duration(seconds: 10)),
+        modifiedAt: baseTime,
         createdAt: baseTime,
-        version: 2,
+        version: 3,
       );
 
       final remote = TestEntity(
@@ -71,9 +71,9 @@ void main() {
         userId: 'user1',
         name: 'Remote',
         value: 100,
-        modifiedAt: baseTime,
+        modifiedAt: baseTime.add(const Duration(seconds: 10)),
         createdAt: baseTime,
-        version: 1,
+        version: 2,
       );
 
       final context = ConflictContext(
@@ -91,6 +91,45 @@ void main() {
 
       expect(resolution.strategy, ResolutionStrategy.useLocal);
       expect(resolution.resolvedData, equals(local));
+    });
+
+    test('falls back to modifiedAt when versions are equal', () async {
+      final baseTime = DateTime.now();
+      final local = TestEntity(
+        id: 'entity1',
+        userId: 'user1',
+        name: 'Local',
+        value: 42,
+        modifiedAt: baseTime,
+        createdAt: baseTime,
+        version: 5,
+      );
+
+      final remote = TestEntity(
+        id: 'entity1',
+        userId: 'user1',
+        name: 'Remote',
+        value: 100,
+        modifiedAt: baseTime.add(const Duration(seconds: 5)),
+        createdAt: baseTime,
+        version: 5,
+      );
+
+      final context = ConflictContext(
+        userId: 'user1',
+        entityId: 'entity1',
+        type: ConflictType.bothModified,
+        detectedAt: DateTime.now(),
+      );
+
+      final resolution = await resolver.resolve(
+        localItem: local,
+        remoteItem: remote,
+        context: context,
+      );
+
+      expect(resolution.strategy, ResolutionStrategy.useRemote);
+      expect(resolution.resolvedData, equals(remote));
     });
 
     test('chooses remote when only remote exists', () async {

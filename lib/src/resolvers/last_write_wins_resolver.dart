@@ -24,6 +24,12 @@ class LastWriteWinsResolver<T extends SyncableEntity>
       return ConflictResolution.useLocal(localItem);
     }
 
+    if (localItem.version != remoteItem.version) {
+      return localItem.version > remoteItem.version
+          ? ConflictResolution.useLocal(localItem)
+          : ConflictResolution.useRemote(remoteItem);
+    }
+
     if (localItem.modifiedAt.isAfter(remoteItem.modifiedAt)) {
       return ConflictResolution.useLocal(localItem);
     }
