@@ -20,13 +20,12 @@ class SynqConfig {
   /// Creates a sync configuration.
   const SynqConfig({
     this.autoSyncInterval = const Duration(minutes: 5),
-    this.autoSyncOnConnect = true,
+    this.autoStartSync = false,
     this.maxRetries = 3,
     this.retryDelay = const Duration(seconds: 5),
     this.batchSize = 50,
     this.defaultConflictResolver,
     this.defaultUserSwitchStrategy = UserSwitchStrategy.promptIfUnsyncedData,
-    this.enableRealTimeSync = false,
     this.syncTimeout = const Duration(minutes: 2),
     this.enableLogging = false,
   });
@@ -37,8 +36,10 @@ class SynqConfig {
   /// Interval between automatic sync operations.
   final Duration autoSyncInterval;
 
-  /// Whether to automatically sync when connectivity is restored.
-  final bool autoSyncOnConnect;
+  /// Whether to automatically start auto-sync for all users on initialization.
+  /// When true, auto-sync will start automatically for all users that have
+  /// data in local storage after the manager is initialized.
+  final bool autoStartSync;
 
   /// Maximum number of retry attempts for failed operations.
   final int maxRetries;
@@ -55,9 +56,6 @@ class SynqConfig {
   /// Default strategy for user switching.
   final UserSwitchStrategy defaultUserSwitchStrategy;
 
-  /// Whether to enable real-time synchronization.
-  final bool enableRealTimeSync;
-
   /// Timeout for sync operations.
   final Duration syncTimeout;
 
@@ -67,19 +65,18 @@ class SynqConfig {
   /// Creates a copy with modified fields.
   SynqConfig copyWith({
     Duration? autoSyncInterval,
-    bool? autoSyncOnConnect,
+    bool? autoStartSync,
     int? maxRetries,
     Duration? retryDelay,
     int? batchSize,
     SyncConflictResolver<dynamic>? defaultConflictResolver,
     UserSwitchStrategy? defaultUserSwitchStrategy,
-    bool? enableRealTimeSync,
     Duration? syncTimeout,
     bool? enableLogging,
   }) {
     return SynqConfig(
       autoSyncInterval: autoSyncInterval ?? this.autoSyncInterval,
-      autoSyncOnConnect: autoSyncOnConnect ?? this.autoSyncOnConnect,
+      autoStartSync: autoStartSync ?? this.autoStartSync,
       maxRetries: maxRetries ?? this.maxRetries,
       retryDelay: retryDelay ?? this.retryDelay,
       batchSize: batchSize ?? this.batchSize,
@@ -87,7 +84,6 @@ class SynqConfig {
           defaultConflictResolver ?? this.defaultConflictResolver,
       defaultUserSwitchStrategy:
           defaultUserSwitchStrategy ?? this.defaultUserSwitchStrategy,
-      enableRealTimeSync: enableRealTimeSync ?? this.enableRealTimeSync,
       syncTimeout: syncTimeout ?? this.syncTimeout,
       enableLogging: enableLogging ?? this.enableLogging,
     );

@@ -198,7 +198,38 @@ class SynqManager<T extends SyncableEntity> {
       statusSubject: _statusSubject,
       middlewares: _middlewares,
     );
+
+    if (config.autoStartSync) {
+      await _autoStartSyncForAllUsers();
+    }
+
     _initialized = true;
+  }
+
+  /// Auto-starts sync for all users that have data in local storage.
+  Future<void> _autoStartSyncForAllUsers() async {
+    try {
+      final allData = await localAdapter.getAll();
+      final userIds = <String>{};
+      for (final item in allData) {
+        if (item.userId.isNotEmpty) {
+          userIds.add(item.userId);
+        }
+      }
+
+      // Initialize queue for each user and start auto-sync
+      for (final userId in userIds) {
+        await _queueManager.initializeUser(userId);
+        startAutoSync(userId);
+      }
+    } on Object catch (e) {
+      _eventController.add(
+        SyncErrorEvent<T>(
+          userId: '',
+          error: 'Auto-start sync failed: $e',
+        ),
+      );
+    }
   }
 
   /// Retrieves all entities for a specific user from local storage.

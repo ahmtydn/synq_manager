@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.1.4]
+### Added
+- ✨ **Auto-Start Sync**: New `autoStartSync` configuration option to automatically start auto-sync for all users with local data on initialization
+- 🔄 **Auto-Start for Multiple Users**: Automatically detects all users with local data and starts auto-sync for each
+
+### Changed
+- 🔧 **Config Rename**: Renamed `autoSyncOnConnect` to `autoStartSync` for better clarity
+- 🧹 **Removed Unused Config**: Removed `enableRealTimeSync` configuration option that was not being used
+
+### Improved
+- ✅ **Enhanced Testing**: Improved integration tests with proper async handling and cleanup
+- 🛠️ **Mock Connectivity Checker**: Enhanced mock with proper stream controller and dispose method for better test reliability
+
+### Fixed
+- 🐛 **Test Timing**: Fixed test timing issues by adding proper wait for initial events
+- 🧪 **Test Cleanup**: Added proper disposal of connectivity checker in tests to prevent resource leaks
+
 ## [2.1.3]
 ### Fixed
 - 🐛 **Critical Error Handling**: Fixed catch blocks to properly handle both `Exception` and `Error` types (e.g., `UnimplementedError`)

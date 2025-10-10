@@ -43,10 +43,14 @@ void main() {
 
       manager.eventStream.listen(events.add);
       manager.onInit.listen(initEvents.add);
+
+      // Wait for initial event to be emitted
+      await Future<void>.delayed(const Duration(milliseconds: 100));
     });
 
     tearDown(() async {
       await manager.dispose();
+      await connectivityChecker.dispose();
     });
 
     test('saves entity locally and enqueues sync operation', () async {
