@@ -24,7 +24,7 @@ void main() {
         value: 42,
         modifiedAt: baseTime,
         createdAt: baseTime,
-        version: 'v1',
+        version: 1,
       );
 
       final remote = TestEntity(
@@ -34,7 +34,7 @@ void main() {
         value: 100,
         modifiedAt: baseTime.add(const Duration(seconds: 10)),
         createdAt: baseTime,
-        version: 'v2',
+        version: 2,
       );
 
       final context = ConflictContext(
@@ -63,7 +63,7 @@ void main() {
         value: 42,
         modifiedAt: baseTime.add(const Duration(seconds: 10)),
         createdAt: baseTime,
-        version: 'v2',
+        version: 2,
       );
 
       final remote = TestEntity(
@@ -73,7 +73,7 @@ void main() {
         value: 100,
         modifiedAt: baseTime,
         createdAt: baseTime,
-        version: 'v1',
+        version: 1,
       );
 
       final context = ConflictContext(
@@ -101,7 +101,7 @@ void main() {
         value: 100,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       final context = ConflictContext(
@@ -129,7 +129,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       final context = ConflictContext(
@@ -165,7 +165,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       final remote = TestEntity(
@@ -175,7 +175,7 @@ void main() {
         value: 100,
         modifiedAt: DateTime.now().add(const Duration(seconds: 10)),
         createdAt: DateTime.now(),
-        version: 'v2',
+        version: 2,
       );
 
       final context = ConflictContext(
@@ -203,7 +203,7 @@ void main() {
         value: 100,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       final context = ConflictContext(
@@ -239,7 +239,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now().add(const Duration(seconds: 10)),
         createdAt: DateTime.now(),
-        version: 'v2',
+        version: 2,
       );
 
       final remote = TestEntity(
@@ -249,7 +249,7 @@ void main() {
         value: 100,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       final context = ConflictContext(
@@ -277,7 +277,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       final context = ConflictContext(

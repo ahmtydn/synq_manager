@@ -53,7 +53,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       await manager.save(entity, 'user1');
@@ -79,7 +79,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       await manager.save(entity, 'user1');
@@ -106,7 +106,7 @@ void main() {
         value: 100,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       remoteAdapter.addRemoteItem('user1', remoteEntity);
@@ -131,7 +131,7 @@ void main() {
         value: 42,
         modifiedAt: baseTime,
         createdAt: baseTime,
-        version: 'v1',
+        version: 1,
       );
 
       final remoteEntity = TestEntity(
@@ -141,7 +141,7 @@ void main() {
         value: 100,
         modifiedAt: baseTime.add(const Duration(seconds: 10)),
         createdAt: baseTime,
-        version: 'v2',
+        version: 2,
       );
 
       await localAdapter.save(localEntity, 'user1');
@@ -165,7 +165,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       await manager.save(entity, 'user1');
@@ -190,7 +190,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       await manager.save(entity, 'user1');
@@ -215,7 +215,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       await manager.save(entity, 'user1');
@@ -240,7 +240,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       await manager.save(user1Entity, 'user1');
@@ -261,7 +261,7 @@ void main() {
         value: 100,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       await manager.save(user2Entity, 'user2');
@@ -283,7 +283,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       await manager.save(entity, 'user1');
@@ -306,7 +306,7 @@ void main() {
           value: i,
           modifiedAt: DateTime.now(),
           createdAt: DateTime.now(),
-          version: 'v1',
+          version: 1,
         );
         await manager.save(entity, 'user1');
       }
@@ -328,7 +328,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       await manager.save(entity, 'user1');

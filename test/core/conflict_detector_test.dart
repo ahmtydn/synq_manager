@@ -31,7 +31,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       final context = detector.detect(
@@ -51,7 +51,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       final context = detector.detect(
@@ -71,7 +71,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       final remote = TestEntity(
@@ -81,7 +81,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       final context = detector.detect(
@@ -103,7 +103,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
       );
 
       final remote = TestEntity(
@@ -113,7 +113,7 @@ void main() {
         value: 42,
         modifiedAt: DateTime.now(),
         createdAt: DateTime.now(),
-        version: 'v1',
+        version: 1,
         isDeleted: true,
       );
 
@@ -136,7 +136,7 @@ void main() {
         value: 42,
         modifiedAt: baseTime.add(const Duration(seconds: 10)),
         createdAt: baseTime,
-        version: 'v2',
+        version: 2,
       );
 
       final remote = TestEntity(
@@ -146,7 +146,7 @@ void main() {
         value: 100,
         modifiedAt: baseTime.add(const Duration(seconds: 20)),
         createdAt: baseTime,
-        version: 'v3',
+        version: 3,
       );
 
       final context = detector.detect(
@@ -168,7 +168,7 @@ void main() {
         value: 42,
         modifiedAt: baseTime.add(const Duration(seconds: 10)),
         createdAt: baseTime,
-        version: 'v2',
+        version: 2,
       );
 
       final remote = TestEntity(
@@ -178,7 +178,7 @@ void main() {
         value: 42,
         modifiedAt: baseTime.add(const Duration(seconds: 20)),
         createdAt: baseTime,
-        version: 'v2',
+        version: 2,
       );
 
       final context = detector.detect(
@@ -199,7 +199,7 @@ void main() {
         value: 42,
         modifiedAt: baseTime.add(const Duration(seconds: 10)),
         createdAt: baseTime,
-        version: 'v2',
+        version: 2,
       );
 
       final remote = TestEntity(
@@ -209,7 +209,7 @@ void main() {
         value: 100,
         modifiedAt: baseTime.add(const Duration(seconds: 20)),
         createdAt: baseTime,
-        version: 'v3',
+        version: 3,
       );
 
       final localMetadata = SyncMetadata(

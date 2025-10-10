@@ -21,7 +21,7 @@ class Task implements SyncableEntity {
         completed: json['completed'] as bool? ?? false,
         modifiedAt: DateTime.parse(json['modifiedAt'] as String),
         createdAt: DateTime.parse(json['createdAt'] as String),
-        version: json['version'] as String,
+        version: json['version'] as int,
         isDeleted: json['isDeleted'] as bool? ?? false,
       );
   @override
@@ -40,7 +40,7 @@ class Task implements SyncableEntity {
   final DateTime createdAt;
 
   @override
-  final String version;
+  final int version;
 
   @override
   final bool isDeleted;
@@ -61,7 +61,7 @@ class Task implements SyncableEntity {
   Task copyWith({
     String? userId,
     DateTime? modifiedAt,
-    String? version,
+    int? version,
     bool? isDeleted,
     String? title,
     bool? completed,

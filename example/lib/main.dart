@@ -121,7 +121,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
       title: title,
       modifiedAt: DateTime.now(),
       createdAt: DateTime.now(),
-      version: 'v1',
+      version: 1,
     );
 
     await _manager.save(task, _currentUserId);
@@ -132,7 +132,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
     final updated = task.copyWith(
       completed: !task.completed,
       modifiedAt: DateTime.now(),
-      version: 'v${int.parse(task.version.substring(1)) + 1}',
+      version: task.version + 1,
     );
 
     await _manager.save(updated, _currentUserId);

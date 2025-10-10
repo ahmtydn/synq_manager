@@ -39,7 +39,7 @@ void main() {
           value: 42,
           modifiedAt: DateTime.now(),
           createdAt: DateTime.now(),
-          version: 'v1',
+          version: 1,
         ),
       );
 
@@ -67,7 +67,7 @@ void main() {
           value: 42,
           modifiedAt: DateTime.now(),
           createdAt: DateTime.now(),
-          version: 'v1',
+          version: 1,
         ),
       );
 

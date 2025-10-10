@@ -21,7 +21,7 @@ class TestEntity implements SyncableEntity {
         value: json['value'] as int,
         modifiedAt: DateTime.parse(json['modifiedAt'] as String),
         createdAt: DateTime.parse(json['createdAt'] as String),
-        version: json['version'] as String,
+        version: json['version'] as int,
         isDeleted: json['isDeleted'] as bool? ?? false,
       );
 
@@ -41,7 +41,7 @@ class TestEntity implements SyncableEntity {
   final DateTime createdAt;
 
   @override
-  final String version;
+  final int version;
 
   @override
   final bool isDeleted;
@@ -66,7 +66,7 @@ class TestEntity implements SyncableEntity {
     int? value,
     DateTime? modifiedAt,
     DateTime? createdAt,
-    String? version,
+    int? version,
     bool? isDeleted,
   }) =>
       TestEntity(

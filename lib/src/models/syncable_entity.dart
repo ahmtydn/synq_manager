@@ -13,7 +13,7 @@ abstract class SyncableEntity {
   DateTime get createdAt;
 
   /// Version or hash used during conflict detection.
-  String get version;
+  int get version;
 
   /// Whether the entity has been soft deleted.
   bool get isDeleted;
@@ -25,7 +25,7 @@ abstract class SyncableEntity {
   SyncableEntity copyWith({
     String? userId,
     DateTime? modifiedAt,
-    String? version,
+    int? version,
     bool? isDeleted,
   });
 
