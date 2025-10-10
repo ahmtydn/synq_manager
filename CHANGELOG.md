@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.2]
+### Fixed
+- 🛡️ **Error Handling in onInit**: Added try-catch block in `onInit` stream to gracefully handle errors during initial data fetch
+- 🔔 **Error Event Emission**: When initial data fetch fails, a `SyncErrorEvent` is now properly emitted instead of crashing
+
+### Improved
+- 💪 **Robustness**: Enhanced error resilience in initialization flow
+
 ## [2.1.1]
 ### Changed
 - ✨ **Improved `onInit` API**: Simplified initialization flow - `onInit` stream now automatically fetches and emits initial data on subscription, eliminating the need for manual `listen()` call

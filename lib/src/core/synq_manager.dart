@@ -122,13 +122,23 @@ class SynqManager<T extends SyncableEntity> {
         .cast<InitialSyncEvent<T>>()
         .doOnListen(() async {
       _ensureInitialized();
-      final initialData = await getAll();
-      _eventController.add(
-        InitialSyncEvent<T>(
-          userId: initialData.isNotEmpty ? initialData.first.userId : '',
-          data: initialData,
-        ),
-      );
+      try {
+        final initialData = await getAll();
+        _eventController.add(
+          InitialSyncEvent<T>(
+            userId: initialData.isNotEmpty ? initialData.first.userId : '',
+            data: initialData,
+          ),
+        );
+      } on Exception catch (e, stack) {
+        _eventController.add(
+          SyncErrorEvent<T>(
+            userId: '',
+            error: 'Failed to fetch initial data: $e',
+            stackTrace: stack,
+          ),
+        );
+      }
     });
   }
 
