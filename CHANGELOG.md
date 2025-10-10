@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.1]
+### Changed
+- ✨ **Improved `onInit` API**: Simplified initialization flow - `onInit` stream now automatically fetches and emits initial data on subscription, eliminating the need for manual `listen()` call
+- 📝 **Better Documentation**: Enhanced documentation for `onInit` stream with detailed behavior description and usage examples
+
+### Removed
+- 🗑️ **Deprecated `listen()` Method**: Removed the standalone `listen()` method as `onInit` stream now handles initialization automatically
+
 ## [2.1.0]
 ### Added
 - ⚡ **Socket-Style Listener API**: Introduced `listen(userId)` on `SynqManager` to deliver an initial dataset snapshot followed by live events through existing streams.
