@@ -116,6 +116,7 @@ class SynqManager<T extends SyncableEntity> {
   /// - [InitialSyncEvent] for the event structure
   /// - [onDataChange] for subsequent data changes
   Stream<InitialSyncEvent<T>> get onInit {
+    _ensureInitialized();
     return eventStream
         .where((event) => event is InitialSyncEvent<T>)
         .cast<InitialSyncEvent<T>>()
