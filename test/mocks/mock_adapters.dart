@@ -1,5 +1,6 @@
 import 'package:synq_manager/src/adapters/local_adapter.dart';
 import 'package:synq_manager/src/adapters/remote_adapter.dart';
+import 'package:synq_manager/src/models/change_detail.dart';
 import 'package:synq_manager/src/models/sync_metadata.dart';
 import 'package:synq_manager/src/models/sync_operation.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
@@ -77,6 +78,11 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
     _storage.clear();
     _pendingOps.clear();
     _metadata.clear();
+  }
+
+  @override
+  Stream<ChangeDetail<T>>? changeStream() {
+    return null;
   }
 }
 
@@ -180,4 +186,7 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
   void setRemoteMetadata(String userId, SyncMetadata metadata) {
     _remoteMetadata[userId] = metadata;
   }
+
+  @override
+  Stream<ChangeDetail<T>>? get changeStream => throw UnimplementedError();
 }

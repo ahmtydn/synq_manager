@@ -1,3 +1,4 @@
+import 'package:synq_manager/src/models/change_detail.dart';
 import 'package:synq_manager/src/models/sync_metadata.dart';
 import 'package:synq_manager/src/models/sync_operation.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
@@ -7,6 +8,14 @@ abstract class LocalAdapter<T extends SyncableEntity> {
   /// Initialize the local storage implementation
   /// (open boxes, create tables, etc.).
   Future<void> initialize();
+
+  /// Stream of changes that occur in the local storage.
+  /// Implementations should emit events when data changes externally
+  /// (e.g., from another instance or background sync).
+  /// Return null if the adapter doesn't support change notifications.
+  Stream<ChangeDetail<T>>? changeStream() {
+    return null;
+  }
 
   /// Fetch all items belonging to the given user.
   Future<List<T>> getAll({String? userId});

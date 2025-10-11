@@ -1,3 +1,4 @@
+import 'package:synq_manager/src/models/change_detail.dart';
 import 'package:synq_manager/src/models/conflict_context.dart';
 import 'package:synq_manager/src/models/conflict_resolution.dart';
 import 'package:synq_manager/src/models/sync_metadata.dart';
@@ -6,6 +7,12 @@ import 'package:synq_manager/src/models/syncable_entity.dart';
 
 /// Remote adapter abstraction for communicating with server-side data sources.
 abstract class RemoteAdapter<T extends SyncableEntity> {
+  /// Stream of changes that occur in the remote storage.
+  /// Implementations should emit events when data changes externally
+  /// (e.g., from another device or user).
+  /// Return null if the adapter doesn't support change notifications.
+  Stream<ChangeDetail<T>>? get changeStream => null;
+
   /// Fetch all items belonging to the user from the remote source.
   Future<List<T>> fetchAll(String userId);
 

@@ -85,4 +85,9 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
     _pendingOps.clear();
     _metadata.clear();
   }
+
+  @override
+  Stream<ChangeDetail<T>>? changeStream() {
+    return null;
+  }
 }

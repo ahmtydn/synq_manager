@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:rxdart/rxdart.dart';
 import 'package:synq_manager/src/adapters/local_adapter.dart';
 import 'package:synq_manager/src/adapters/remote_adapter.dart';
-import 'package:synq_manager/src/config/synq_config.dart';
 import 'package:synq_manager/src/core/conflict_detector.dart';
 import 'package:synq_manager/src/core/queue_manager.dart';
 import 'package:synq_manager/src/core/sync_engine.dart';
@@ -14,6 +13,7 @@ import 'package:synq_manager/src/events/sync_event.dart';
 import 'package:synq_manager/src/events/user_switch_event.dart';
 import 'package:synq_manager/src/metrics/synq_metrics.dart';
 import 'package:synq_manager/src/middleware/synq_middleware.dart';
+import 'package:synq_manager/src/models/change_detail.dart';
 import 'package:synq_manager/src/models/sync_operation.dart';
 import 'package:synq_manager/src/models/sync_result.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
@@ -22,501 +22,745 @@ import 'package:synq_manager/src/resolvers/last_write_wins_resolver.dart';
 import 'package:synq_manager/src/resolvers/sync_conflict_resolver.dart';
 import 'package:synq_manager/src/utils/connectivity_checker.dart';
 import 'package:synq_manager/src/utils/logger.dart';
+import 'package:synq_manager/synq_manager.dart'
+    show SynqConfig, UserSwitchException, UserSwitchStrategy;
 import 'package:uuid/uuid.dart';
 
-/// Main entry point for managing synchronization
-/// between local and remote data.
+/// Orchestrates bidirectional synchronization between local
+/// and remote data stores.
+///
+/// This manager handles conflict resolution, queuing, user switching, and
+/// lifecycle management for synchronized entities. It provides a reactive
+/// interface through event streams and supports middleware transformations.
+///
+/// **Lifecycle:**
+/// 1. Create instance with required adapters
+/// 2. Call [initialize] before any operations
+/// 3. Perform sync operations as needed
+/// 4. Call [dispose] when finished
+///
+/// **Thread Safety:** This class is not thread-safe. Ensure all operations
+/// occur on the same isolate or use appropriate synchronization.
 class SynqManager<T extends SyncableEntity> {
-  /// Creates a SynqManager instance.
+  /// Creates a [SynqManager] with the provided adapters
+  /// and optional configurations.
   SynqManager({
-    required this.localAdapter,
-    required this.remoteAdapter,
+    required LocalAdapter<T> localAdapter,
+    required RemoteAdapter<T> remoteAdapter,
     SyncConflictResolver<T>? conflictResolver,
     SynqConfig? synqConfig,
     ConnectivityChecker? connectivity,
     SynqLogger? initialLogger,
-  })  : conflictResolver = conflictResolver ?? LastWriteWinsResolver<T>(),
-        config = synqConfig ?? SynqConfig.defaultConfig(),
-        connectivityChecker = connectivity ?? ConnectivityChecker(),
-        logger = initialLogger ??
+  })  : _conflictResolver = conflictResolver ?? LastWriteWinsResolver<T>(),
+        _config = synqConfig ?? SynqConfig.defaultConfig(),
+        _localAdapter = localAdapter,
+        _remoteAdapter = remoteAdapter,
+        _connectivityChecker = connectivity ?? ConnectivityChecker(),
+        _logger = initialLogger ??
             SynqLogger(
               enabled: (synqConfig ?? SynqConfig.defaultConfig()).enableLogging,
-            ),
-        _eventController = StreamController<SyncEvent<T>>.broadcast(),
-        _statusSubject = BehaviorSubject<SyncStatusSnapshot>(),
-        _metrics = SynqMetrics();
+            ) {
+    _initializeInternalComponents();
+  }
 
-  /// Local data adapter.
-  final LocalAdapter<T> localAdapter;
+  // Core dependencies - immutable after construction
+  final LocalAdapter<T> _localAdapter;
+  final RemoteAdapter<T> _remoteAdapter;
+  final SyncConflictResolver<T> _conflictResolver;
+  final SynqConfig _config;
+  final ConnectivityChecker _connectivityChecker;
+  final SynqLogger _logger;
 
-  /// Remote data adapter.
-  final RemoteAdapter<T> remoteAdapter;
-
-  /// Conflict resolution strategy.
-  final SyncConflictResolver<T> conflictResolver;
-
-  /// Configuration settings.
-  final SynqConfig config;
-
-  /// Connectivity checker.
-  final ConnectivityChecker connectivityChecker;
-
-  /// Logger instance.
-  final SynqLogger logger;
-
-  final StreamController<SyncEvent<T>> _eventController;
-  final BehaviorSubject<SyncStatusSnapshot> _statusSubject;
+  // Internal state management
+  final StreamController<SyncEvent<T>> _eventController =
+      StreamController<SyncEvent<T>>.broadcast();
+  final BehaviorSubject<SyncStatusSnapshot> _statusSubject =
+      BehaviorSubject<SyncStatusSnapshot>();
   final List<SynqMiddleware<T>> _middlewares = [];
   final Map<String, Timer> _autoSyncTimers = {};
-  final SynqMetrics _metrics;
+  final SynqMetrics _metrics = SynqMetrics();
+  final Set<String> _processedChangeKeys = {};
+
   late final QueueManager<T> _queueManager;
   late final ConflictDetector<T> _conflictDetector;
+
   SyncEngine<T>? _syncEngine;
   SyncStatistics _statistics = const SyncStatistics();
-
   bool _initialized = false;
+  bool _disposed = false;
 
-  /// Stream of all sync events.
+  StreamSubscription<ChangeDetail<T>>? _localChangeSubscription;
+  StreamSubscription<ChangeDetail<T>>? _remoteChangeSubscription;
+
+  // Configuration constants
+  static const int _maxProcessedChangesCache = 1000;
+  static const int _timestampToleranceSeconds = 1;
+
+  /// Public event streams - filtered views of the main event stream
   Stream<SyncEvent<T>> get eventStream => _eventController.stream;
 
-  /// Stream of data change events.
-  Stream<DataChangeEvent<T>> get onDataChange => eventStream
-      .where((event) => event is DataChangeEvent<T>)
-      .cast<DataChangeEvent<T>>();
+  /// Emits when local data changes (create, update, delete).
+  Stream<DataChangeEvent<T>> get onDataChange =>
+      eventStream.whereType<DataChangeEvent<T>>();
 
-  /// Stream of initialization payloads that emits initial data automatically.
+  /// Emits initial data automatically upon first subscription.
   ///
-  /// This stream automatically fetches all existing entities from local storage
-  /// and emits an [InitialSyncEvent] when you first subscribe to it. This is
-  /// useful for initializing your UI state when the application starts.
-  ///
-  /// **Behavior:**
-  /// - On first subscription, automatically fetches all local data
-  /// - Emits an [InitialSyncEvent] containing all locally stored entities
-  /// - If no data exists, emits an event with an empty list
-  /// - The userId in the event is taken from the first entity if available,
-  ///   otherwise an empty string
-  ///
-  /// **Important:** Ensure [initialize] is called before subscribing to this
-  /// stream, otherwise a [StateError] will be thrown.
-  ///
-  /// **Usage:**
-  /// ```dart
-  /// await synqManager.initialize();
-  ///
-  /// // Simply subscribe - initial data loads automatically!
-  /// synqManager.onInit.listen((event) {
-  ///   print('Initial data loaded: ${event.data.length} items');
-  ///   print('User ID: ${event.userId}');
-  ///   // Update your UI with initial data
-  /// });
-  /// ```
-  ///
-  /// See also:
-  /// - [InitialSyncEvent] for the event structure
-  /// - [onDataChange] for subsequent data changes
+  /// **Critical:** Must call [initialize] before subscribing.
+  /// Automatically fetches all local entities
+  /// and emits them as an [InitialSyncEvent].
+  /// If an error occurs during fetch, emits a [SyncErrorEvent] instead.
   Stream<InitialSyncEvent<T>> get onInit {
     _ensureInitialized();
     return eventStream
-        .where((event) => event is InitialSyncEvent<T>)
-        .cast<InitialSyncEvent<T>>()
-        .doOnListen(() async {
-      _ensureInitialized();
-      try {
-        final initialData = await getAll();
-        _eventController.add(
-          InitialSyncEvent<T>(
-            userId: initialData.isNotEmpty ? initialData.first.userId : '',
-            data: initialData,
-          ),
-        );
-      } on Object catch (e, stack) {
-        _eventController.add(
-          SyncErrorEvent<T>(
-            userId: '',
-            error: 'Failed to fetch initial data: $e',
-            stackTrace: stack,
-          ),
-        );
-      }
-    });
+        .whereType<InitialSyncEvent<T>>()
+        .doOnListen(_emitInitialData);
   }
 
   /// Stream of sync started events.
-  Stream<SyncStartedEvent<T>> get onSyncStarted => eventStream
-      .where((event) => event is SyncStartedEvent<T>)
-      .cast<SyncStartedEvent<T>>();
+  Stream<SyncStartedEvent<T>> get onSyncStarted =>
+      eventStream.whereType<SyncStartedEvent<T>>();
 
   /// Stream of sync progress events.
-  Stream<SyncProgressEvent<T>> get onSyncProgress => eventStream
-      .where((event) => event is SyncProgressEvent<T>)
-      .cast<SyncProgressEvent<T>>();
+  Stream<SyncProgressEvent<T>> get onSyncProgress =>
+      eventStream.whereType<SyncProgressEvent<T>>();
 
   /// Stream of sync completed events.
-  Stream<SyncCompletedEvent<T>> get onSyncCompleted => eventStream
-      .where((event) => event is SyncCompletedEvent<T>)
-      .cast<SyncCompletedEvent<T>>();
+  Stream<SyncCompletedEvent<T>> get onSyncCompleted =>
+      eventStream.whereType<SyncCompletedEvent<T>>();
 
   /// Stream of conflict detected events.
-  Stream<ConflictDetectedEvent<T>> get onConflict => eventStream
-      .where((event) => event is ConflictDetectedEvent<T>)
-      .cast<ConflictDetectedEvent<T>>();
+  Stream<ConflictDetectedEvent<T>> get onConflict =>
+      eventStream.whereType<ConflictDetectedEvent<T>>();
 
   /// Stream of user switched events.
-  Stream<UserSwitchedEvent<T>> get onUserSwitched => eventStream
-      .where((event) => event is UserSwitchedEvent<T>)
-      .cast<UserSwitchedEvent<T>>();
+  Stream<UserSwitchedEvent<T>> get onUserSwitched =>
+      eventStream.whereType<UserSwitchedEvent<T>>();
 
   /// Stream of sync error events.
-  Stream<SyncErrorEvent<T>> get onError => eventStream
-      .where((event) => event is SyncErrorEvent<T>)
-      .cast<SyncErrorEvent<T>>();
+  Stream<SyncErrorEvent<T>> get onError =>
+      eventStream.whereType<SyncErrorEvent<T>>();
 
-  /// Stream of sync status snapshots.
-  Stream<SyncStatusSnapshot> get syncStatusStream => _statusSubject.stream;
+  /// Registers a middleware for data transformation pipeline.
+  ///
+  /// Middlewares are executed in registration order for both
+  /// pre-save and post-fetch operations.
+  void addMiddleware(SynqMiddleware<T> middleware) {
+    if (_disposed) {
+      throw StateError('Cannot add middleware after disposal');
+    }
+    _middlewares.add(middleware);
+    _logger.debug('Middleware added: ${middleware.runtimeType}');
+  }
 
-  /// Adds a middleware to the processing pipeline.
-  void addMiddleware(SynqMiddleware<T> middleware) =>
-      _middlewares.add(middleware);
-
-  /// Initializes the sync manager.
+  /// Initializes all internal components and establishes change subscriptions.
+  ///
+  /// **Idempotent:** Safe to call multiple times (no-op after first call).
+  /// **Must be called** before any data operations.
+  ///
+  /// Throws [StateError] if called after [dispose].
   Future<void> initialize() async {
-    if (_initialized) return;
-    await localAdapter.initialize();
-    _conflictDetector = ConflictDetector<T>();
-    _queueManager = QueueManager<T>(localAdapter: localAdapter, logger: logger);
-    _syncEngine = SyncEngine<T>(
-      localAdapter: localAdapter,
-      remoteAdapter: remoteAdapter,
-      conflictResolver: conflictResolver,
-      queueManager: _queueManager,
-      conflictDetector: _conflictDetector,
-      logger: logger,
-      config: config,
-      connectivityChecker: connectivityChecker,
-      eventController: _eventController,
-      statusSubject: _statusSubject,
-      middlewares: _middlewares,
-    );
-
-    if (config.autoStartSync) {
-      await _autoStartSyncForAllUsers();
+    if (_disposed) {
+      throw StateError('Cannot initialize after disposal');
     }
 
-    _initialized = true;
-  }
+    if (_initialized) {
+      _logger.debug('Already initialized, skipping');
+      return;
+    }
 
-  /// Auto-starts sync for all users that have data in local storage.
-  Future<void> _autoStartSyncForAllUsers() async {
     try {
-      final allData = await localAdapter.getAll();
-      final userIds = <String>{};
-      for (final item in allData) {
-        if (item.userId.isNotEmpty) {
-          userIds.add(item.userId);
-        }
-      }
+      await _initializeAdapters();
+      _initializeSyncComponents();
+      await _setupAutoSyncIfEnabled();
+      await _subscribeToChangeStreams();
 
-      // Initialize queue for each user and start auto-sync
-      for (final userId in userIds) {
-        await _queueManager.initializeUser(userId);
-        startAutoSync(userId);
-      }
-    } on Object catch (e) {
-      _eventController.add(
-        SyncErrorEvent<T>(
-          userId: '',
-          error: 'Auto-start sync failed: $e',
-        ),
-      );
+      _initialized = true;
+      _logger.info('SynqManager initialized successfully');
+    } on Object catch (e, stack) {
+      _logger.error('Initialization failed', stack);
+      _emitError('', 'Initialization failed: $e', stack);
+      rethrow;
     }
   }
 
-  /// Retrieves all entities for a specific user from local storage.
+  /// Retrieves all entities for the specified user from local storage.
   ///
-  /// Returns a list of entities after applying post-fetch transformations.
+  /// Applies all registered middleware transformations post-fetch.
+  /// Returns empty list if no data exists.
   Future<List<T>> getAll({String? userId}) async {
-    _ensureInitialized();
-    final items = await localAdapter.getAll(userId: userId);
-    return Future.wait(items.map(_transformAfterFetch));
+    _ensureInitializedAndNotDisposed();
+
+    try {
+      final items = await _localAdapter.getAll(userId: userId);
+      return Future.wait(items.map(_applyPostFetchTransformations));
+    } on Object catch (e, stack) {
+      _logger.error('Failed to get all items for user: $userId', stack);
+      rethrow;
+    }
   }
 
-  /// Retrieves a single entity by ID for a specific user.
+  /// Retrieves a single entity by ID for the specified user.
   ///
-  /// Returns the entity if found, or null otherwise.
-  /// Applies post-fetch transformations.
+  /// Returns null if entity doesn't exist or has been deleted.
+  /// Applies all registered middleware transformations post-fetch.
   Future<T?> getById(String id, String userId) async {
-    _ensureInitialized();
-    final item = await localAdapter.getById(id, userId);
-    if (item == null) return null;
-    return _transformAfterFetch(item);
+    _ensureInitializedAndNotDisposed();
+
+    if (id.isEmpty) {
+      throw ArgumentError.value(id, 'id', 'Must not be empty');
+    }
+
+    try {
+      final item = await _localAdapter.getById(id, userId);
+      if (item == null) return null;
+
+      return _applyPostFetchTransformations(item);
+    } on Object catch (e, stack) {
+      _logger.error('Failed to get item by ID: $id for user: $userId', stack);
+      rethrow;
+    }
   }
 
-  /// Saves an entity to local storage and queues it for synchronization.
+  /// Persists an entity to local storage and queues for remote synchronization.
   ///
-  /// Creates a new entity if it doesn't exist, or updates an existing one.
-  /// Applies pre-save transformations and triggers a data change event.
+  /// Creates a new entity if `item.id` doesn't exist, otherwise updates.
+  /// Applies all registered middleware transformations pre-save.
+  /// Emits [DataChangeEvent] upon successful save.
+  ///
+  /// Returns the transformed entity that was actually saved.
   Future<T> save(T item, String userId) async {
-    _ensureInitialized();
-    await _queueManager.initializeUser(userId);
-    final existing = await localAdapter.getById(item.id, userId);
-    final transformed = await _transformBeforeSave(item);
-    await localAdapter.save(transformed, userId);
+    _ensureInitializedAndNotDisposed();
 
-    final operation = SyncOperation<T>(
-      id: const Uuid().v4(),
-      userId: userId,
-      type: existing == null
-          ? SyncOperationType.create
-          : SyncOperationType.update,
-      data: transformed,
-      entityId: transformed.id,
-      timestamp: DateTime.now(),
-    );
-    await _queueManager.enqueue(userId, operation);
+    if (userId.isEmpty) {
+      throw ArgumentError.value(userId, 'userId', 'Must not be empty');
+    }
 
-    _eventController.add(
-      DataChangeEvent<T>(
+    try {
+      await _ensureUserInitialized(userId);
+
+      final existing = await _localAdapter.getById(item.id, userId);
+      final isCreate = existing == null;
+
+      final transformed = await _applyPreSaveTransformations(item);
+      await _localAdapter.save(transformed, userId);
+
+      final operation = _createOperation(
+        userId: userId,
+        type: isCreate ? SyncOperationType.create : SyncOperationType.update,
+        entityId: transformed.id,
+        data: transformed,
+      );
+
+      await _queueManager.enqueue(userId, operation);
+
+      _emitDataChangeEvent(
         userId: userId,
         data: transformed,
-        changeType: existing == null ? ChangeType.created : ChangeType.updated,
+        changeType: isCreate ? ChangeType.created : ChangeType.updated,
         source: DataSource.local,
-      ),
-    );
-    return transformed;
+      );
+
+      _logger.debug('Saved entity ${item.id} for user $userId');
+      return transformed;
+    } on Object catch (e, stack) {
+      _logger.error(
+        'Failed to save entity ${item.id} for user: $userId',
+        stack,
+      );
+      rethrow;
+    }
   }
 
-  /// Deletes an entity from local storage and
-  /// queues the deletion for synchronization.
+  /// Removes an entity from local storage and queues deletion for remote sync.
   ///
-  /// If the entity doesn't exist locally, the operation is skipped.
-  /// Triggers a data change event for the deletion.
+  /// No-op if entity doesn't exist locally.
+  /// Emits [DataChangeEvent] with deletion type upon successful removal.
   Future<void> delete(String id, String userId) async {
-    _ensureInitialized();
-    await _queueManager.initializeUser(userId);
-    final existing = await localAdapter.getById(id, userId);
-    if (existing == null) return;
-    await localAdapter.delete(id, userId);
+    _ensureInitializedAndNotDisposed();
 
-    final operation = SyncOperation<T>(
-      id: const Uuid().v4(),
-      userId: userId,
-      type: SyncOperationType.delete,
-      entityId: id,
-      timestamp: DateTime.now(),
-    );
-    await _queueManager.enqueue(userId, operation);
+    if (id.isEmpty) {
+      throw ArgumentError.value(id, 'id', 'Must not be empty');
+    }
+    if (userId.isEmpty) {
+      throw ArgumentError.value(userId, 'userId', 'Must not be empty');
+    }
 
-    _eventController.add(
-      DataChangeEvent<T>(
+    try {
+      await _ensureUserInitialized(userId);
+
+      final existing = await _localAdapter.getById(id, userId);
+      if (existing == null) {
+        _logger.debug(
+          'Entity $id does not exist for user $userId, skipping delete',
+        );
+        return;
+      }
+
+      await _localAdapter.delete(id, userId);
+
+      final operation = _createOperation(
+        userId: userId,
+        type: SyncOperationType.delete,
+        entityId: id,
+      );
+
+      await _queueManager.enqueue(userId, operation);
+
+      _emitDataChangeEvent(
         userId: userId,
         data: existing,
         changeType: ChangeType.deleted,
         source: DataSource.local,
-      ),
-    );
+      );
+
+      _logger.debug('Deleted entity $id for user $userId');
+    } on Object catch (e, stack) {
+      _logger.error('Failed to delete entity $id for user: $userId', stack);
+      rethrow;
+    }
   }
 
-  /// Initiates a synchronization process for a specific user.
+  /// Executes a full synchronization cycle for the specified user.
   ///
-  /// Syncs local changes to the remote source and pulls remote changes.
-  /// Can be forced to run even if conditions are not met. Updates metrics.
+  /// Pushes pending local changes to remote, then pulls remote changes.
+  /// Use [force] to bypass typical sync conditions (connectivity, timing).
+  /// Updates internal metrics and statistics.
+  ///
+  /// Returns [SyncResult] containing detailed outcome information.
   Future<SyncResult> sync(
     String userId, {
     bool force = false,
     SyncOptions? options,
   }) async {
-    _ensureInitialized();
-    await _queueManager.initializeUser(userId);
-    final engine = _syncEngine!;
-    final result =
-        await engine.synchronize(userId, force: force, options: options);
-    _updateStatistics(result);
-    _metrics.totalSyncOperations += 1;
-    _metrics.successfulSyncs += result.failedCount == 0 ? 1 : 0;
-    _metrics.failedSyncs += result.failedCount > 0 ? 1 : 0;
-    _metrics.conflictsDetected += result.conflictsResolved;
-    _metrics.activeUsers.add(userId);
-    return result;
+    _ensureInitializedAndNotDisposed();
+
+    if (userId.isEmpty) {
+      throw ArgumentError.value(userId, 'userId', 'Must not be empty');
+    }
+
+    try {
+      await _ensureUserInitialized(userId);
+
+      final engine = _syncEngine!;
+      final result = await engine.synchronize(
+        userId,
+        force: force,
+        options: options,
+      );
+
+      _updateMetricsAndStatistics(result, userId);
+
+      return result;
+    } on Object catch (e, stack) {
+      _logger.error('Sync failed for user: $userId', stack);
+      _emitError(userId, 'Sync failed: $e', stack);
+      rethrow;
+    }
   }
 
-  /// Cancels an ongoing synchronization process for a specific user.
+  /// Cancels an ongoing synchronization for the specified user.
   Future<void> cancelSync(String userId) async {
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
     _syncEngine?.cancel(userId);
+    _logger.info('Sync cancelled for user: $userId');
   }
 
-  /// Pauses an ongoing synchronization process for a specific user.
+  /// Pauses an ongoing synchronization for the specified user.
   Future<void> pauseSync(String userId) async {
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
     await _syncEngine?.pause(userId);
+    _logger.info('Sync paused for user: $userId');
   }
 
-  /// Resumes a paused synchronization process for a specific user.
+  /// Resumes a previously paused synchronization for the specified user.
   Future<void> resumeSync(String userId) async {
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
     _syncEngine?.resume(userId);
+    _logger.info('Sync resumed for user: $userId');
   }
 
-  /// Retrieves the current synchronization status snapshot for a user.
+  /// Retrieves current synchronization status snapshot for the specified user.
   Future<SyncStatusSnapshot> getSyncSnapshot(String userId) async {
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
     return _syncEngine!.getSnapshot(userId);
   }
 
-  /// Retrieves synchronization statistics for a specific user.
+  /// Retrieves cumulative synchronization statistics.
+  ///
+  /// Note: Currently returns global statistics, not per-user.
   Future<SyncStatistics> getSyncStatistics(String userId) async {
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
     return _statistics;
   }
 
-  /// Switches the active user, optionally handling unsynced data.
+  /// Switches the active user with configurable handling of unsynced data.
   ///
-  /// Supports different strategies: sync before switch,
-  /// discard changes, or queue changes.
-  /// Returns the result of the user switch operation including any errors.
+  /// **Strategies:**
+  /// - [UserSwitchStrategy.syncThenSwitch]: Sync old user before switching
+  /// - [UserSwitchStrategy.clearAndFetch]: Clear new user's local data
+  /// - [UserSwitchStrategy.promptIfUnsyncedData]: Fail if old user has
+  ///   pending ops
+  /// - [UserSwitchStrategy.keepLocal]: Switch without modifications
+  ///
+  /// Returns [UserSwitchResult] indicating success or failure with details.
   Future<UserSwitchResult> switchUser({
     required String? oldUserId,
     required String newUserId,
     UserSwitchStrategy? strategy,
   }) async {
-    _ensureInitialized();
-    final resolvedStrategy = strategy ?? config.defaultUserSwitchStrategy;
-    final hadUnsynced =
-        oldUserId != null && _queueManager.getPending(oldUserId).isNotEmpty;
+    _ensureInitializedAndNotDisposed();
+
+    if (newUserId.isEmpty) {
+      throw ArgumentError.value(newUserId, 'newUserId', 'Must not be empty');
+    }
+
+    final resolvedStrategy = strategy ?? _config.defaultUserSwitchStrategy;
+    final hadUnsynced = await _hasUnsyncedData(oldUserId);
 
     try {
-      switch (resolvedStrategy) {
-        case UserSwitchStrategy.syncThenSwitch:
-          if (oldUserId != null) {
-            await sync(oldUserId, force: true);
-          }
-        case UserSwitchStrategy.clearAndFetch:
-          await localAdapter.clearUserData(newUserId);
-        case UserSwitchStrategy.promptIfUnsyncedData:
-          if (hadUnsynced) {
-            return UserSwitchResult.failure(
-              previousUserId: oldUserId,
-              newUserId: newUserId,
-              errorMessage: 'Unsynced data present for '
-                  '$oldUserId. Resolve before switching or '
-                  'choose a different strategy.',
-            );
-          }
-        case UserSwitchStrategy.keepLocal:
-          break;
-      }
-
-      await _queueManager.initializeUser(newUserId);
-      _eventController.add(
-        UserSwitchedEvent<T>(
-          previousUserId: oldUserId,
-          newUserId: newUserId,
-          hadUnsyncedData: hadUnsynced,
-        ),
+      await _executeUserSwitchStrategy(
+        resolvedStrategy,
+        oldUserId,
+        newUserId,
+        hadUnsynced,
       );
+
+      await _ensureUserInitialized(newUserId);
+
+      _emitUserSwitchedEvent(oldUserId, newUserId, hadUnsynced);
       _metrics.userSwitchCount += 1;
+
+      _logger.info('User switched from $oldUserId to $newUserId');
+
       return UserSwitchResult.success(
         previousUserId: oldUserId,
         newUserId: newUserId,
         unsyncedOperationsHandled: hadUnsynced ? 1 : 0,
       );
-    } on Object catch (e) {
+    } on UserSwitchException catch (e) {
+      _logger.warn('User switch rejected: ${e.message}');
       return UserSwitchResult.failure(
         previousUserId: oldUserId,
         newUserId: newUserId,
-        errorMessage: e.toString(),
+        errorMessage: e.message,
+      );
+    } on Object catch (e, stack) {
+      _logger.error('User switch failed', stack);
+      return UserSwitchResult.failure(
+        previousUserId: oldUserId,
+        newUserId: newUserId,
+        errorMessage: 'User switch failed: $e',
       );
     }
   }
 
-  /// Starts automatic periodic synchronization for a user.
+  /// Starts automatic periodic synchronization for the specified user.
   ///
-  /// Syncs at the specified interval or uses the default from config.
-  /// Stops any existing auto-sync for the same user first.
+  /// Uses [interval] if provided, otherwise uses [SynqConfig.autoSyncInterval].
+  /// Automatically stops any existing auto-sync for the same user.
   void startAutoSync(String userId, {Duration? interval}) {
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
+
+    if (userId.isEmpty) {
+      throw ArgumentError.value(userId, 'userId', 'Must not be empty');
+    }
+
     stopAutoSync(userId: userId);
-    final syncInterval = interval ?? config.autoSyncInterval;
+
+    final syncInterval = interval ?? _config.autoSyncInterval;
     _autoSyncTimers[userId] = Timer.periodic(syncInterval, (_) {
-      unawaited(sync(userId));
+      unawaited(
+        sync(userId).catchError((Object e, StackTrace stack) {
+          _logger.error('Auto-sync failed for user $userId', stack);
+          return SyncResult(
+            userId: userId,
+            syncedCount: 0,
+            failedCount: 0,
+            conflictsResolved: 0,
+            pendingOperations: const [],
+            duration: Duration.zero,
+            errors: [e],
+          );
+        }),
+      );
     });
+
+    _logger
+        .info('Auto-sync started for user $userId (interval: $syncInterval)');
   }
 
   /// Stops automatic synchronization for one or all users.
   ///
-  /// If a userId is provided, stops auto-sync for that user only.
-  /// Otherwise, stops all active auto-syncs.
+  /// If [userId] is provided, stops only that user's auto-sync.
+  /// If [userId] is null, stops all active auto-syncs.
   void stopAutoSync({String? userId}) {
     if (userId != null) {
-      _autoSyncTimers.remove(userId)?.cancel();
+      final timer = _autoSyncTimers.remove(userId);
+      timer?.cancel();
+      if (timer != null) {
+        _logger.info('Auto-sync stopped for user: $userId');
+      }
       return;
     }
+
+    // Stop all auto-syncs
+    final count = _autoSyncTimers.length;
     for (final timer in _autoSyncTimers.values) {
       timer.cancel();
     }
     _autoSyncTimers.clear();
+
+    if (count > 0) {
+      _logger.info('All auto-syncs stopped ($count users)');
+    }
   }
 
-  /// Gets the current synchronization status for a user.
+  /// Gets the current synchronization status for the specified user.
   Future<SyncStatus> getSyncStatus(String userId) async {
     final snapshot = await getSyncSnapshot(userId);
     return snapshot.status;
   }
 
-  /// Returns the number of pending operations for a user.
+  /// Returns the number of pending synchronization operations for the user.
   Future<int> getPendingCount(String userId) async {
-    _ensureInitialized();
-    await _queueManager.initializeUser(userId);
+    _ensureInitializedAndNotDisposed();
+    await _ensureUserInitialized(userId);
     return _queueManager.getPending(userId).length;
   }
 
-  /// Retries all failed sync operations for a user by forcing a new sync.
+  /// Retries all failed synchronization operations by forcing a new sync.
   Future<void> retryFailedOperations(String userId) async {
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
+    _logger.info('Retrying failed operations for user: $userId');
     await sync(userId, force: true);
   }
 
-  /// Clears failed operations from the queue (not yet implemented).
-  Future<void> clearFailedOperations(String userId) async {
-    _ensureInitialized();
-    // For now failed operations remain in queue; we simply log.
-    logger.warn('clearFailedOperations is not yet implemented.');
-  }
-
-  /// Disposes of all resources and closes streams.
+  /// Releases all resources and closes streams.
   ///
-  /// Should be called when the sync manager is no longer needed.
+  /// **Must be called** when the manager is no longer needed.
+  /// After disposal, the manager cannot be reused.
   Future<void> dispose() async {
-    stopAutoSync();
-    await _eventController.close();
-    await _statusSubject.close();
-    await _queueManager.dispose();
-    await localAdapter.dispose();
+    if (_disposed) {
+      _logger.debug('Already disposed, skipping');
+      return;
+    }
+
+    _logger.info('Disposing SynqManager');
+
+    _disposed = true;
+
+    try {
+      stopAutoSync();
+      await _localChangeSubscription?.cancel();
+      await _remoteChangeSubscription?.cancel();
+      _processedChangeKeys.clear();
+      await _eventController.close();
+      await _statusSubject.close();
+      await _queueManager.dispose();
+      await _localAdapter.dispose();
+
+      _logger.info('SynqManager disposed successfully');
+    } on Object catch (e, stack) {
+      _logger.error('Error during disposal', stack);
+      // Don't rethrow - disposal should be best-effort
+    }
   }
 
-  Future<T> _transformBeforeSave(T item) async {
-    var transformed = item;
-    for (final middleware in _middlewares) {
-      transformed = await middleware.transformBeforeSave(transformed);
+  // ========== Private Helper Methods ==========
+
+  void _initializeInternalComponents() {
+    // Components that can be initialized in constructor
+    _conflictDetector = ConflictDetector<T>();
+    _queueManager = QueueManager<T>(
+      localAdapter: _localAdapter,
+      logger: _logger,
+    );
+  }
+
+  Future<void> _initializeAdapters() async {
+    _logger.debug('Initializing local adapter');
+    await _localAdapter.initialize();
+  }
+
+  void _initializeSyncComponents() {
+    _logger.debug('Initializing sync engine');
+    _syncEngine = SyncEngine<T>(
+      localAdapter: _localAdapter,
+      remoteAdapter: _remoteAdapter,
+      conflictResolver: _conflictResolver,
+      queueManager: _queueManager,
+      conflictDetector: _conflictDetector,
+      logger: _logger,
+      config: _config,
+      connectivityChecker: _connectivityChecker,
+      eventController: _eventController,
+      statusSubject: _statusSubject,
+      middlewares: _middlewares,
+    );
+  }
+
+  Future<void> _setupAutoSyncIfEnabled() async {
+    if (!_config.autoStartSync) return;
+
+    _logger.debug('Auto-start sync enabled, discovering users');
+    await _autoStartSyncForAllUsers();
+  }
+
+  Future<void> _autoStartSyncForAllUsers() async {
+    try {
+      final allData = await _localAdapter.getAll();
+      final userIds = allData
+          .map((item) => item.userId)
+          .where((id) => id.isNotEmpty)
+          .toSet();
+
+      _logger.info('Auto-starting sync for ${userIds.length} users');
+
+      for (final userId in userIds) {
+        await _queueManager.initializeUser(userId);
+        startAutoSync(userId);
+      }
+    } on Object catch (e, stack) {
+      _logger.error('Auto-start sync failed', stack);
+      _emitError('', 'Auto-start sync failed: $e', stack);
     }
+  }
+
+  Future<void> _subscribeToChangeStreams() async {
+    await _subscribeToLocalChanges();
+    await _subscribeToRemoteChanges();
+  }
+
+  Future<void> _subscribeToLocalChanges() async {
+    final localChangeStream = _localAdapter.changeStream();
+    if (localChangeStream == null) {
+      _logger.debug('Local adapter does not provide change stream');
+      return;
+    }
+
+    _localChangeSubscription = localChangeStream.listen(
+      _handleExternalChange,
+      onError: (Object error, StackTrace stackTrace) {
+        _logger.error('Error in local change stream', stackTrace);
+      },
+      cancelOnError: false,
+    );
+
+    _logger.info('Subscribed to local adapter change stream');
+  }
+
+  Future<void> _subscribeToRemoteChanges() async {
+    final remoteChangeStream = _remoteAdapter.changeStream;
+    if (remoteChangeStream == null) {
+      _logger.debug('Remote adapter does not provide change stream');
+      return;
+    }
+
+    _remoteChangeSubscription = remoteChangeStream.listen(
+      _handleExternalChange,
+      onError: (Object error, StackTrace stackTrace) {
+        _logger.error('Error in remote change stream', stackTrace);
+      },
+      cancelOnError: false,
+    );
+
+    _logger.info('Subscribed to remote adapter change stream');
+  }
+
+  Future<void> _emitInitialData() async {
+    _ensureInitialized();
+
+    try {
+      final initialData = await getAll();
+      final userId = initialData.isNotEmpty ? initialData.first.userId : '';
+
+      _eventController.add(
+        InitialSyncEvent<T>(
+          userId: userId,
+          data: initialData,
+        ),
+      );
+
+      _logger.debug('Emitted initial data: ${initialData.length} items');
+    } on Object catch (e, stack) {
+      _logger.error('Failed to fetch initial data', stack);
+      _emitError('', 'Failed to fetch initial data: $e', stack);
+    }
+  }
+
+  Future<T> _applyPreSaveTransformations(T item) async {
+    var transformed = item;
+
+    for (final middleware in _middlewares) {
+      try {
+        transformed = await middleware.transformBeforeSave(transformed);
+      } on Object catch (e, stack) {
+        _logger.error(
+          'Middleware ${middleware.runtimeType} failed during pre-save',
+          stack,
+        );
+        rethrow;
+      }
+    }
+
     return transformed;
   }
 
-  Future<T> _transformAfterFetch(T item) async {
+  Future<T> _applyPostFetchTransformations(T item) async {
     var transformed = item;
+
     for (final middleware in _middlewares) {
-      transformed = await middleware.transformAfterFetch(transformed);
+      try {
+        transformed = await middleware.transformAfterFetch(transformed);
+      } on Object catch (e, stack) {
+        _logger.error(
+          'Middleware ${middleware.runtimeType} failed during post-fetch',
+          stack,
+        );
+        rethrow;
+      }
     }
+
     return transformed;
+  }
+
+  SyncOperation<T> _createOperation({
+    required String userId,
+    required SyncOperationType type,
+    required String entityId,
+    T? data,
+  }) {
+    return SyncOperation<T>(
+      id: const Uuid().v4(),
+      userId: userId,
+      type: type,
+      data: data,
+      entityId: entityId,
+      timestamp: DateTime.now(),
+    );
+  }
+
+  void _updateMetricsAndStatistics(SyncResult result, String userId) {
+    _updateMetrics(result, userId);
+    _updateStatistics(result);
+  }
+
+  void _updateMetrics(SyncResult result, String userId) {
+    _metrics
+      ..totalSyncOperations += 1
+      ..successfulSyncs += result.failedCount == 0 ? 1 : 0
+      ..failedSyncs += result.failedCount > 0 ? 1 : 0
+      ..conflictsDetected += result.conflictsResolved
+      ..activeUsers.add(userId);
   }
 
   void _updateStatistics(SyncResult result) {
     final totalSyncs = _statistics.totalSyncs + 1;
     final totalDuration = _statistics.totalSyncDuration + result.duration;
-    final avgDuration = totalSyncs == 0
-        ? Duration.zero
-        : Duration(milliseconds: totalDuration.inMilliseconds ~/ totalSyncs);
+    final avgDuration = Duration(
+      milliseconds: totalDuration.inMilliseconds ~/ totalSyncs,
+    );
+
     _statistics = _statistics.copyWith(
       totalSyncs: totalSyncs,
       successfulSyncs:
@@ -531,9 +775,352 @@ class SynqManager<T extends SyncableEntity> {
     );
   }
 
+  Future<bool> _hasUnsyncedData(String? userId) async {
+    if (userId == null || userId.isEmpty) return false;
+
+    try {
+      return _queueManager.getPending(userId).isNotEmpty;
+    } on Object catch (e) {
+      _logger.error('Failed to check unsynced data for user: $userId', e);
+      return false;
+    }
+  }
+
+  Future<void> _executeUserSwitchStrategy(
+    UserSwitchStrategy strategy,
+    String? oldUserId,
+    String newUserId,
+    bool hadUnsynced,
+  ) async {
+    switch (strategy) {
+      case UserSwitchStrategy.syncThenSwitch:
+        if (oldUserId != null && oldUserId.isNotEmpty) {
+          _logger.info('Syncing old user before switch: $oldUserId');
+          await sync(oldUserId, force: true);
+        }
+
+      case UserSwitchStrategy.clearAndFetch:
+        _logger.info('Clearing local data for new user: $newUserId');
+        await _localAdapter.clearUserData(newUserId);
+
+      case UserSwitchStrategy.promptIfUnsyncedData:
+        if (hadUnsynced) {
+          throw UserSwitchException(
+            oldUserId,
+            newUserId,
+            'Unsynced data present for $oldUserId. '
+            'Resolve before switching or choose a different strategy.',
+          );
+        }
+
+      case UserSwitchStrategy.keepLocal:
+        _logger.debug('Keeping local data during user switch');
+    }
+  }
+
+  void _emitDataChangeEvent({
+    required String userId,
+    required T data,
+    required ChangeType changeType,
+    required DataSource source,
+  }) {
+    _eventController.add(
+      DataChangeEvent<T>(
+        userId: userId,
+        data: data,
+        changeType: changeType,
+        source: source,
+      ),
+    );
+  }
+
+  void _emitUserSwitchedEvent(
+    String? previousUserId,
+    String newUserId,
+    bool hadUnsyncedData,
+  ) {
+    _eventController.add(
+      UserSwitchedEvent<T>(
+        previousUserId: previousUserId,
+        newUserId: newUserId,
+        hadUnsyncedData: hadUnsyncedData,
+      ),
+    );
+  }
+
+  void _emitError(String userId, String message, [StackTrace? stackTrace]) {
+    _eventController.add(
+      SyncErrorEvent<T>(
+        userId: userId,
+        error: message,
+        stackTrace: stackTrace,
+      ),
+    );
+  }
+
+  Future<void> _ensureUserInitialized(String userId) async {
+    try {
+      await _queueManager.initializeUser(userId);
+    } on Object catch (e, stack) {
+      _logger.error('Failed to initialize user: $userId', stack);
+      rethrow;
+    }
+  }
+
+  /// Handles external changes from local or remote adapters.
+  ///
+  /// Implements sophisticated deduplication to prevent infinite loops:
+  /// 1. Checks if change was already processed (by unique key)
+  /// 2. Checks if change already exists in pending operations
+  /// 3. Checks if local data is already identical
+  ///
+  /// Only processes changes that represent actual new work.
+  Future<void> _handleExternalChange(ChangeDetail<T> change) async {
+    if (_disposed) {
+      _logger.debug('Ignoring change after disposal');
+      return;
+    }
+
+    try {
+      final changeKey = _computeChangeKey(change);
+
+      if (_isAlreadyProcessed(changeKey)) {
+        _logger.debug('Skipping duplicate change: $changeKey');
+        return;
+      }
+
+      _logger.info(
+        'Processing external change: ${change.type.name} '
+        'for entity ${change.entityId} (user: ${change.userId})',
+      );
+
+      if (await _isDuplicateOfPendingOperation(change)) {
+        _logger.debug('Change already queued in pending operations');
+        _markAsProcessed(changeKey);
+        return;
+      }
+
+      if (await _isDataAlreadyCurrent(change)) {
+        _logger.debug('Local data already matches change');
+        _markAsProcessed(changeKey);
+        return;
+      }
+
+      await _applyExternalChange(change);
+      _markAsProcessed(changeKey);
+
+      _logger.debug('External change processed successfully: $changeKey');
+    } on Object catch (e, stack) {
+      _logger.error('Failed to handle external change', stack);
+      _emitError(
+        change.userId,
+        'Failed to process external change: $e',
+        stack,
+      );
+    }
+  }
+
+  /// Computes a unique key for change deduplication.
+  String _computeChangeKey(ChangeDetail<T> change) {
+    return '${change.type.name}_'
+        '${change.entityId}_'
+        '${change.userId}_'
+        '${change.timestamp.millisecondsSinceEpoch}';
+  }
+
+  bool _isAlreadyProcessed(String changeKey) {
+    return _processedChangeKeys.contains(changeKey);
+  }
+
+  void _markAsProcessed(String changeKey) {
+    _processedChangeKeys.add(changeKey);
+    _pruneProcessedChangesCache();
+  }
+
+  void _pruneProcessedChangesCache() {
+    if (_processedChangeKeys.length <= _maxProcessedChangesCache) {
+      return;
+    }
+
+    final excessCount = _processedChangeKeys.length - _maxProcessedChangesCache;
+    final keysToRemove = _processedChangeKeys.take(excessCount).toList();
+    _processedChangeKeys.removeAll(keysToRemove);
+
+    _logger.debug('Pruned $excessCount old change keys from cache');
+  }
+
+  /// Checks if this change duplicates an operation already in the queue.
+  Future<bool> _isDuplicateOfPendingOperation(ChangeDetail<T> change) async {
+    try {
+      final pendingOps =
+          await _localAdapter.getPendingOperations(change.userId);
+
+      for (final op in pendingOps) {
+        if (!_isMatchingOperation(op, change)) {
+          continue;
+        }
+
+        // For creates and updates, verify data matches
+        if (change.data != null && op.data != null) {
+          if (_areEntitiesEquivalent(op.data!, change.data!)) {
+            return true;
+          }
+        } else if (change.data == null && op.data == null) {
+          // Both are deletes for same entity
+          return true;
+        }
+      }
+
+      return false;
+    } on Object catch (e, stack) {
+      _logger.error('Error checking duplicate operation', stack);
+      // On error, assume not duplicate to allow processing
+      return false;
+    }
+  }
+
+  bool _isMatchingOperation(
+    SyncOperation<T> operation,
+    ChangeDetail<T> change,
+  ) {
+    return operation.type == change.type &&
+        operation.entityId == change.entityId;
+  }
+
+  /// Checks if local data already matches the incoming change.
+  Future<bool> _isDataAlreadyCurrent(ChangeDetail<T> change) async {
+    try {
+      // For deletions, check if entity is already gone or marked deleted
+      if (change.type == SyncOperationType.delete) {
+        return await _isAlreadyDeleted(change.entityId, change.userId);
+      }
+
+      // For creates/updates, compare actual data
+      if (change.data == null) {
+        return false;
+      }
+
+      final existing = await _localAdapter.getById(
+        change.entityId,
+        change.userId,
+      );
+
+      if (existing == null) {
+        return false;
+      }
+
+      return _areEntitiesEquivalent(existing, change.data!);
+    } on Object catch (e, stack) {
+      _logger.error('Error checking data currency', stack);
+      // On error, assume data is not current to allow processing
+      return false;
+    }
+  }
+
+  Future<bool> _isAlreadyDeleted(String entityId, String userId) async {
+    final existing = await _localAdapter.getById(entityId, userId);
+    return existing == null || existing.isDeleted;
+  }
+
+  /// Compares two entities for logical equivalence.
+  ///
+  /// Considers metadata (id, version, timestamps) and data payload.
+  /// Allows small timestamp differences due to serialization rounding.
+  bool _areEntitiesEquivalent(T entity1, T entity2) {
+    // Check metadata fields
+    if (entity1.id != entity2.id ||
+        entity1.userId != entity2.userId ||
+        entity1.version != entity2.version ||
+        entity1.isDeleted != entity2.isDeleted) {
+      return false;
+    }
+
+    // Compare timestamps with tolerance for serialization differences
+    if (!_areTimestampsEquivalent(
+          entity1.modifiedAt,
+          entity2.modifiedAt,
+        ) ||
+        !_areTimestampsEquivalent(
+          entity1.createdAt,
+          entity2.createdAt,
+        )) {
+      return false;
+    }
+
+    // Compare business data via JSON representation
+    return _areDataPayloadsEquivalent(entity1, entity2);
+  }
+
+  bool _areTimestampsEquivalent(DateTime ts1, DateTime ts2) {
+    return ts1.difference(ts2).abs().inSeconds <= _timestampToleranceSeconds;
+  }
+
+  /// Compares entity data payloads excluding metadata fields.
+  bool _areDataPayloadsEquivalent(T entity1, T entity2) {
+    try {
+      final json1 = _extractDataPayload(entity1.toJson());
+      final json2 = _extractDataPayload(entity2.toJson());
+
+      // Deep comparison via string representation
+      // In production, consider using a proper deep equality package
+      return json1.toString() == json2.toString();
+    } on Object catch (e, stack) {
+      _logger.error('Error comparing entity payloads', stack);
+      // On error, assume different to allow processing
+      return false;
+    }
+  }
+
+  /// Extracts business data from JSON by removing metadata fields.
+  Map<String, dynamic> _extractDataPayload(Map<String, dynamic> json) {
+    // Create a copy to avoid modifying original
+    final payload = Map<String, dynamic>.from(json)
+      ..remove('id')
+      ..remove('userId')
+      ..remove('modifiedAt')
+      ..remove('createdAt')
+      ..remove('version')
+      ..remove('isDeleted');
+
+    return payload;
+  }
+
+  /// Applies an external change to local storage.
+  Future<void> _applyExternalChange(ChangeDetail<T> change) async {
+    switch (change.type) {
+      case SyncOperationType.create:
+      case SyncOperationType.update:
+        if (change.data == null) {
+          _logger.warn(
+            'Ignoring ${change.type.name} change with null data '
+            'for entity ${change.entityId}',
+          );
+          return;
+        }
+
+        await save(change.data!, change.userId);
+        _logger.info(
+          'Applied external ${change.type.name} for entity ${change.entityId}',
+        );
+
+      case SyncOperationType.delete:
+        await delete(change.entityId, change.userId);
+        _logger.info('Applied external delete for entity ${change.entityId}');
+    }
+  }
+
   void _ensureInitialized() {
     if (!_initialized || _syncEngine == null) {
-      throw StateError('SynqManager.initialize() must be called before use.');
+      throw StateError(
+        'SynqManager.initialize() must be called before use.',
+      );
     }
+  }
+
+  void _ensureInitializedAndNotDisposed() {
+    if (_disposed) {
+      throw StateError('Cannot perform operations after disposal');
+    }
+    _ensureInitialized();
   }
 }

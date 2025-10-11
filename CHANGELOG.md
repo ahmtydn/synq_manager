@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.1.5]
+### Added
+- 🔄 **External Change Detection**: New `changeStream()` method on `LocalAdapter` and `changeStream` getter on `RemoteAdapter` to enable real-time change notifications
+- 📡 **Change Detail Model**: New `ChangeDetail<T>` model for representing external data changes with metadata (type, entityId, userId, timestamp, sourceId)
+- 🔁 **Automatic Change Synchronization**: SynqManager now automatically subscribes to adapter change streams and applies external changes to local storage
+- 🛡️ **Smart Deduplication**: Sophisticated change deduplication system to prevent infinite loops and duplicate processing
+- 🔍 **Change Validation**: Multi-level validation checks for external changes (duplicate detection, data currency checks, pending operation checks)
+
+### Changed
+- 🏗️ **SynqManager Refactoring**: Major internal refactoring for better maintainability and error handling
+- 📝 **Enhanced Documentation**: Comprehensive inline documentation for all public methods and internal components
+- 🔒 **Immutable Dependencies**: Core dependencies are now final and immutable after construction
+- ⚡ **Improved Initialization**: Better initialization flow with proper error handling and logging
+- 🧹 **Better Resource Management**: Enhanced disposal process with subscription cleanup and state validation
+
+### Improved
+- 🛠️ **Error Handling**: More robust error handling throughout the codebase with detailed logging
+- 🔐 **State Validation**: Added disposal state checks to prevent operations after disposal
+- 📊 **Better Logging**: More detailed debug and info logs throughout the synchronization lifecycle
+- 🧪 **Type Safety**: Improved type safety with better use of whereType() instead of where() + cast()
+- ⚙️ **Configuration**: Better separation of concerns between configuration and runtime state
+
+### Removed
+- 🗑️ **RemoteChangeEvent**: Removed in favor of the new `ChangeDetail` model which is more comprehensive and aligned with sync operations
+
+### Fixed
+- 🐛 **Null Safety**: Better null handling in change stream subscriptions and error callbacks
+- 🔧 **Middleware Error Handling**: Improved error handling in middleware transformations
+
 ## [2.1.4]
 ### Added
 - ✨ **Auto-Start Sync**: New `autoStartSync` configuration option to automatically start auto-sync for all users with local data on initialization

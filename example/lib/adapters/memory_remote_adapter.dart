@@ -130,4 +130,7 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
   Future<bool> isConnected() async {
     return _isConnected;
   }
+
+  @override
+  Stream<ChangeDetail<T>>? get changeStream => throw UnimplementedError();
 }
