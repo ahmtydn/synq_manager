@@ -513,19 +513,31 @@ class SyncEngine<T extends SyncableEntity> {
       T remoteItem,
     ) onConflictResolved,
   }) async {
-    if (remoteItems.isEmpty) {
-      await _applyRemoteDeletions(
-        userId,
-        remoteIds: const <String>{},
-        deadline: deadline,
-      );
-      return const _RemoteSyncSummary();
-    }
-
     final pendingIds = queueManager
         .getPending(userId)
         .map((operation) => operation.entityId)
         .toSet();
+
+    if (remoteItems.isEmpty) {
+      final restored = await _restoreRemoteFromLocal(
+        userId,
+        pendingIds: pendingIds,
+        deadline: deadline,
+      );
+
+      if (restored) {
+        logger.info('Remote empty for $userId, restored from local cache.');
+        return const _RemoteSyncSummary();
+      }
+
+      final deletions = await _applyRemoteDeletions(
+        userId,
+        remoteIds: const <String>{},
+        pendingIds: pendingIds,
+        deadline: deadline,
+      );
+      return _RemoteSyncSummary(remoteDeletes: deletions);
+    }
 
     final remoteIds = <String>{};
     var conflictCount = 0;
@@ -662,6 +674,46 @@ class SyncEngine<T extends SyncableEntity> {
     }
 
     return deletions;
+  }
+
+  Future<bool> _restoreRemoteFromLocal(
+    String userId, {
+    required Set<String> pendingIds,
+    required DateTime? deadline,
+  }) async {
+    final localItems = await localAdapter.getAll(userId: userId);
+    final candidates = localItems
+        .where((item) => !item.isDeleted && !pendingIds.contains(item.id))
+        .toList();
+
+    if (candidates.isEmpty) {
+      return false;
+    }
+
+    for (final item in candidates) {
+      _ensureNotTimedOut(deadline);
+      await _checkPaused(userId);
+
+      if (_cancelledUsers.contains(userId)) {
+        throw _SyncCancelledException();
+      }
+
+      final prepared = await _transformBeforeSave(item);
+      final remoteResult = await remoteAdapter.push(prepared, userId);
+      final normalized = await _transformAfterFetch(remoteResult);
+      await localAdapter.save(normalized, userId);
+
+      eventController.add(
+        DataChangeEvent<T>(
+          userId: userId,
+          data: normalized,
+          changeType: ChangeType.updated,
+          source: DataSource.remote,
+        ),
+      );
+    }
+
+    return true;
   }
 
   Future<void> _applyConflictResolution(

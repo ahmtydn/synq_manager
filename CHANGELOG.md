@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.1.8]
+### Fixed
+- 🛡️ **Remote Sync Regression**: Prevent local datasets from being wiped when the remote source returns empty by repopulating remote storage from healthy local data
+- 🧪 **Regression Coverage**: Added unit test ensuring empty-remote scenarios keep local data intact and rehydrate the remote store
+
 ## [2.1.7]
 ### Added
 - 🔁 **Remote Metadata Persistence**: `RemoteAdapter` now exposes `updateSyncMetadata` so sync runs persist metadata both locally and remotely for accurate comparisons
