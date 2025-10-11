@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.1.9]
+### Fixed
+-  Minor dependency updates and maintenance
+
 ## [2.1.8]
 ### Fixed
 - 🛡️ **Remote Sync Regression**: Prevent local datasets from being wiped when the remote source returns empty by repopulating remote storage from healthy local data

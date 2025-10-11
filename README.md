@@ -530,14 +530,6 @@ class CustomRemoteAdapter<T extends SyncableEntity>
   }
 
   @override
-  Future<BatchSyncResult<T>> batchSync(
-    List<SyncOperation<T>> operations,
-    String userId,
-  ) async {
-    // Bulk sync support (optional)
-  }
-
-  @override
   Future<SyncMetadata?> getSyncMetadata(String userId) async {
     // Return stored metadata snapshot
   }

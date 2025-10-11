@@ -125,53 +125,6 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
   }
 
   @override
-  Future<BatchSyncResult<T>> batchSync(
-    List<SyncOperation<T>> operations,
-    String userId,
-  ) async {
-    if (!connected) throw Exception('No connection');
-
-    final stopwatch = Stopwatch()..start();
-    final successful = <T>[];
-    final failed = <SyncOperationFailure<T>>[];
-
-    for (final op in operations) {
-      try {
-        if (_failedIds.contains(op.entityId)) {
-          throw Exception('Simulated failure for ${op.entityId}');
-        }
-
-        switch (op.type) {
-          case SyncOperationType.create:
-          case SyncOperationType.update:
-            if (op.data != null) {
-              final result = await push(op.data!, userId);
-              successful.add(result);
-            }
-          case SyncOperationType.delete:
-            await deleteRemote(op.entityId, userId);
-        }
-      } on Exception catch (e) {
-        failed.add(
-          SyncOperationFailure(
-            operation: op,
-            error: e,
-            canRetry: true,
-          ),
-        );
-      }
-    }
-
-    stopwatch.stop();
-    return BatchSyncResult(
-      successful: successful,
-      failed: failed,
-      totalProcessed: operations.length,
-      duration: stopwatch.elapsed,
-    );
-  }
-
-  @override
   Future<SyncMetadata?> getSyncMetadata(String userId) async {
     return _remoteMetadata[userId];
   }

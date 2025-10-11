@@ -26,13 +26,6 @@ abstract class RemoteAdapter<T extends SyncableEntity> {
   /// Delete the item from the remote source.
   Future<void> deleteRemote(String id, String userId);
 
-  /// Perform a batch sync operation, reconciling
-  /// local operations with the remote source.
-  Future<BatchSyncResult<T>> batchSync(
-    List<SyncOperation<T>> operations,
-    String userId,
-  );
-
   /// Retrieve remote-side metadata to compare sync states.
   Future<SyncMetadata?> getSyncMetadata(String userId);
 
@@ -47,36 +40,6 @@ abstract class RemoteAdapter<T extends SyncableEntity> {
 
   /// Determine whether remote connectivity is currently available.
   Future<bool> isConnected();
-}
-
-/// Result of a batch sync invocation that captures successes and failures.
-class BatchSyncResult<T extends SyncableEntity> {
-  /// Creates a batch sync result.
-  const BatchSyncResult({
-    required this.successful,
-    required this.failed,
-    required this.totalProcessed,
-    required this.duration,
-  });
-
-  /// Successfully synced items.
-  final List<T> successful;
-
-  /// Failed operations.
-  final List<SyncOperationFailure<T>> failed;
-
-  /// Total number of operations processed.
-  final int totalProcessed;
-
-  /// Duration of the batch operation.
-  final Duration duration;
-
-  /// Whether any operations failed.
-  bool get hasFailures => failed.isNotEmpty;
-
-  /// Success rate as a fraction (0.0 to 1.0).
-  double get successRate =>
-      totalProcessed == 0 ? 0 : successful.length / totalProcessed;
 }
 
 /// Details about a failed sync operation.

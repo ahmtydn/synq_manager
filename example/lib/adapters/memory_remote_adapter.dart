@@ -62,55 +62,6 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
   }
 
   @override
-  Future<BatchSyncResult<T>> batchSync(
-    List<SyncOperation<T>> operations,
-    String userId,
-  ) async {
-    if (!_isConnected) {
-      throw Exception('No network connection');
-    }
-
-    final startTime = DateTime.now();
-    final successful = <T>[];
-    final failed = <SyncOperationFailure<T>>[];
-
-    // Simulate network delay
-    await Future<void>.delayed(const Duration(milliseconds: 200));
-
-    _remoteStorage.putIfAbsent(userId, () => {});
-
-    for (final op in operations) {
-      try {
-        switch (op.type) {
-          case SyncOperationType.create:
-          case SyncOperationType.update:
-            if (op.data != null) {
-              _remoteStorage[userId]![op.data!.id] = op.data!;
-              successful.add(op.data!);
-            }
-          case SyncOperationType.delete:
-            _remoteStorage[userId]?.remove(op.entityId);
-        }
-      } on Exception catch (e) {
-        failed.add(
-          SyncOperationFailure(
-            operation: op,
-            error: e.toString(),
-            canRetry: true,
-          ),
-        );
-      }
-    }
-
-    return BatchSyncResult(
-      successful: successful,
-      failed: failed,
-      totalProcessed: operations.length,
-      duration: DateTime.now().difference(startTime),
-    );
-  }
-
-  @override
   Future<SyncMetadata?> getSyncMetadata(String userId) async {
     if (!_isConnected) {
       throw Exception('No network connection');
