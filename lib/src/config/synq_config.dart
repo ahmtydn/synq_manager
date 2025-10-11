@@ -25,6 +25,7 @@ class SynqConfig {
     this.defaultUserSwitchStrategy = UserSwitchStrategy.promptIfUnsyncedData,
     this.syncTimeout = const Duration(minutes: 2),
     this.enableLogging = false,
+    this.initialUserId,
   });
 
   /// Creates default configuration.
@@ -56,6 +57,9 @@ class SynqConfig {
   /// Whether to enable logging.
   final bool enableLogging;
 
+  /// Optional initial user ID to set upon initialization.
+  final String? initialUserId;
+
   /// Creates a copy with modified fields.
   SynqConfig copyWith({
     Duration? autoSyncInterval,
@@ -66,6 +70,7 @@ class SynqConfig {
     UserSwitchStrategy? defaultUserSwitchStrategy,
     Duration? syncTimeout,
     bool? enableLogging,
+    String? initialUserId,
   }) {
     return SynqConfig(
       autoSyncInterval: autoSyncInterval ?? this.autoSyncInterval,
@@ -77,6 +82,7 @@ class SynqConfig {
           defaultUserSwitchStrategy ?? this.defaultUserSwitchStrategy,
       syncTimeout: syncTimeout ?? this.syncTimeout,
       enableLogging: enableLogging ?? this.enableLogging,
+      initialUserId: initialUserId ?? this.initialUserId,
     );
   }
 }

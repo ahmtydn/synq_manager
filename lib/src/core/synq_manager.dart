@@ -461,7 +461,7 @@ class SynqManager<T extends SyncableEntity> {
     _ensureInitializedAndNotDisposed();
 
     if (userId.isEmpty) {
-      throw ArgumentError.value(userId, 'userId', 'Must not be empty');
+      return;
     }
 
     stopAutoSync(userId: userId);
@@ -607,18 +607,8 @@ class SynqManager<T extends SyncableEntity> {
 
   Future<void> _autoStartSyncForAllUsers() async {
     try {
-      final allData = await _localAdapter.getAll();
-      final userIds = allData
-          .map((item) => item.userId)
-          .where((id) => id.isNotEmpty)
-          .toSet();
-
-      _logger.info('Auto-starting sync for ${userIds.length} users');
-
-      for (final userId in userIds) {
-        await _queueManager.initializeUser(userId);
-        startAutoSync(userId);
-      }
+      await _queueManager.initializeUser(_config.initialUserId ?? '');
+      startAutoSync(_config.initialUserId ?? '');
     } on Object catch (e, stack) {
       _logger.error('Auto-start sync failed', stack);
       _emitError('', 'Auto-start sync failed: $e', stack);

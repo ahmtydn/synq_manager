@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.10]
+### Added
+- 🔑 **Initial User Bootstrap**: Introduced `SynqConfig.initialUserId` so auto-start sync can target a known user without scanning the entire local dataset
+
+### Changed
+- ⚙️ **Auto Sync Initialization**: `startAutoSync` now quietly no-ops when the provided user ID is empty, preventing unnecessary argument errors during startup flows that intentionally defer user selection
+- 🚀 **Auto Start Strategy**: Auto-start sync now honors the configured initial user instead of loading every local entity up-front, reducing startup work for large data sets
+
 ## [2.1.9]
 ### Fixed
 -  Minor dependency updates and maintenance
