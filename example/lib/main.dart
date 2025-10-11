@@ -62,10 +62,9 @@ class _TaskListScreenState extends State<TaskListScreen> {
     _manager = SynqManager<Task>(
       localAdapter: localAdapter,
       remoteAdapter: remoteAdapter,
-      synqConfig: SynqConfig(
-        autoSyncInterval: const Duration(seconds: 30),
+      synqConfig: const SynqConfig(
+        autoSyncInterval: Duration(seconds: 30),
         enableLogging: true,
-        defaultConflictResolver: LastWriteWinsResolver<Task>(),
       ),
     );
 

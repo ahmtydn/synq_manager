@@ -61,7 +61,7 @@ class SyncMetadata {
   /// Converts to JSON format.
   Map<String, dynamic> toJson() => {
         'userId': userId,
-        'lastSyncTime': lastSyncTime.toIso8601String(),
+        'lastSyncTime': lastSyncTime.toUtc().toIso8601String(),
         'dataHash': dataHash,
         'itemCount': itemCount,
         if (deviceId != null) 'deviceId': deviceId,

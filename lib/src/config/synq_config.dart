@@ -1,5 +1,3 @@
-import 'package:synq_manager/src/resolvers/sync_conflict_resolver.dart';
-
 /// Strategies available when switching between users.
 enum UserSwitchStrategy {
   /// Clear local data and fetch fresh from remote.
@@ -24,7 +22,6 @@ class SynqConfig {
     this.maxRetries = 3,
     this.retryDelay = const Duration(seconds: 5),
     this.batchSize = 50,
-    this.defaultConflictResolver,
     this.defaultUserSwitchStrategy = UserSwitchStrategy.promptIfUnsyncedData,
     this.syncTimeout = const Duration(minutes: 2),
     this.enableLogging = false,
@@ -50,9 +47,6 @@ class SynqConfig {
   /// Number of operations to sync in a single batch.
   final int batchSize;
 
-  /// Default conflict resolution strategy.
-  final SyncConflictResolver<dynamic>? defaultConflictResolver;
-
   /// Default strategy for user switching.
   final UserSwitchStrategy defaultUserSwitchStrategy;
 
@@ -69,7 +63,6 @@ class SynqConfig {
     int? maxRetries,
     Duration? retryDelay,
     int? batchSize,
-    SyncConflictResolver<dynamic>? defaultConflictResolver,
     UserSwitchStrategy? defaultUserSwitchStrategy,
     Duration? syncTimeout,
     bool? enableLogging,
@@ -80,8 +73,6 @@ class SynqConfig {
       maxRetries: maxRetries ?? this.maxRetries,
       retryDelay: retryDelay ?? this.retryDelay,
       batchSize: batchSize ?? this.batchSize,
-      defaultConflictResolver:
-          defaultConflictResolver ?? this.defaultConflictResolver,
       defaultUserSwitchStrategy:
           defaultUserSwitchStrategy ?? this.defaultUserSwitchStrategy,
       syncTimeout: syncTimeout ?? this.syncTimeout,
