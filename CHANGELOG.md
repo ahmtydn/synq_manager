@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.7]
+### Added
+- 🔁 **Remote Metadata Persistence**: `RemoteAdapter` now exposes `updateSyncMetadata` so sync runs persist metadata both locally and remotely for accurate comparisons
+
+### Changed
+- 🧪 **Integration Coverage**: Updated integration tests and example remote adapter to validate remote metadata synchronization
+
 ## [2.1.6]
 ### Fixed
 - 🐛 **Initialization State**: Fixed initialization state flag to be set before async operations to prevent race conditions during setup

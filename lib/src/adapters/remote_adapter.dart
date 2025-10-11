@@ -34,7 +34,16 @@ abstract class RemoteAdapter<T extends SyncableEntity> {
   );
 
   /// Retrieve remote-side metadata to compare sync states.
-  Future<SyncMetadata?> getRemoteSyncMetadata(String userId);
+  Future<SyncMetadata?> getSyncMetadata(String userId);
+
+  /// Persist the latest sync metadata on the remote side.
+  ///
+  /// Implementations should store the provided [metadata] so that subsequent
+  /// calls to [getSyncMetadata] can retrieve an up-to-date snapshot.
+  Future<void> updateSyncMetadata(
+    SyncMetadata metadata,
+    String userId,
+  );
 
   /// Determine whether remote connectivity is currently available.
   Future<bool> isConnected();

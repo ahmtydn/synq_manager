@@ -505,6 +505,56 @@ class CustomLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
     // Cleanup
   }
 }
+
+```dart
+class CustomRemoteAdapter<T extends SyncableEntity>
+    implements RemoteAdapter<T> {
+  @override
+  Future<List<T>> fetchAll(String userId) async {
+    // Fetch all items
+  }
+
+  @override
+  Future<T?> fetchById(String id, String userId) async {
+    // Fetch single item
+  }
+
+  @override
+  Future<T> push(T item, String userId) async {
+    // Create or update remotely
+  }
+
+  @override
+  Future<void> deleteRemote(String id, String userId) async {
+    // Delete remotely
+  }
+
+  @override
+  Future<BatchSyncResult<T>> batchSync(
+    List<SyncOperation<T>> operations,
+    String userId,
+  ) async {
+    // Bulk sync support (optional)
+  }
+
+  @override
+  Future<SyncMetadata?> getSyncMetadata(String userId) async {
+    // Return stored metadata snapshot
+  }
+
+  @override
+  Future<void> updateSyncMetadata(
+    SyncMetadata metadata,
+    String userId,
+  ) async {
+    // Persist metadata for future comparisons
+  }
+
+  @override
+  Future<bool> isConnected() async {
+    // Remote availability
+  }
+}
 ```
 
 ---

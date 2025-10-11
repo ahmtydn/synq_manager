@@ -180,7 +180,7 @@ class SyncEngine<T extends SyncableEntity> {
       }
 
       final localMetadata = await localAdapter.getSyncMetadata(userId);
-      final remoteMetadata = await remoteAdapter.getRemoteSyncMetadata(userId);
+      final remoteMetadata = await remoteAdapter.getSyncMetadata(userId);
 
       final shouldForce = force || (options?.forceFullSync ?? false);
       final shouldSyncRemotely = shouldForce ||
@@ -222,6 +222,7 @@ class SyncEngine<T extends SyncableEntity> {
         itemCount: currentItems.length,
       );
       await localAdapter.updateSyncMetadata(metadata, userId);
+      await remoteAdapter.updateSyncMetadata(metadata, userId);
 
       stopwatch.stop();
 

@@ -6,6 +6,7 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
     implements RemoteAdapter<T> {
   MemoryRemoteAdapter({required this.fromJson});
   final Map<String, Map<String, T>> _remoteStorage = {};
+  final Map<String, SyncMetadata> _remoteMetadata = {};
   final T Function(Map<String, dynamic>) fromJson;
   final bool _isConnected = true;
 
@@ -110,20 +111,42 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
   }
 
   @override
-  Future<SyncMetadata?> getRemoteSyncMetadata(String userId) async {
+  Future<SyncMetadata?> getSyncMetadata(String userId) async {
     if (!_isConnected) {
       throw Exception('No network connection');
     }
 
-    // For demo purposes, return basic metadata
+    final existing = _remoteMetadata[userId];
+    if (existing != null) {
+      return existing;
+    }
+
+    // Fallback: derive metadata from current storage snapshot.
     final items = _remoteStorage[userId]?.values.toList() ?? [];
-    return SyncMetadata(
+    final derived = SyncMetadata(
       lastSyncTime: DateTime.now(),
       userId: userId,
       deviceId: 'demo-device',
       dataHash: items.length.toString(),
       itemCount: items.length,
     );
+    _remoteMetadata[userId] = derived;
+    return derived;
+  }
+
+  /// Exposes stored metadata for demos and tests.
+  SyncMetadata? getStoredMetadata(String userId) => _remoteMetadata[userId];
+
+  @override
+  Future<void> updateSyncMetadata(
+    SyncMetadata metadata,
+    String userId,
+  ) async {
+    if (!_isConnected) {
+      throw Exception('No network connection');
+    }
+
+    _remoteMetadata[userId] = metadata;
   }
 
   @override

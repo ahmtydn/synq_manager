@@ -104,6 +104,11 @@ void main() {
       expect(remoteItems, hasLength(1));
       expect(remoteItems.first.name, 'Test Item');
 
+      final remoteMetadata = remoteAdapter.metadataFor('user1');
+      expect(remoteMetadata, isNotNull);
+      expect(remoteMetadata!.itemCount, 1);
+      expect(remoteMetadata.dataHash.isNotEmpty, isTrue);
+
       final pendingCount = await manager.getPendingCount('user1');
       expect(pendingCount, 0);
     });

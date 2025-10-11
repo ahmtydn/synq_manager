@@ -172,9 +172,19 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
   }
 
   @override
-  Future<SyncMetadata?> getRemoteSyncMetadata(String userId) async {
+  Future<SyncMetadata?> getSyncMetadata(String userId) async {
     return _remoteMetadata[userId];
   }
+
+  @override
+  Future<void> updateSyncMetadata(
+    SyncMetadata metadata,
+    String userId,
+  ) async {
+    _remoteMetadata[userId] = metadata;
+  }
+
+  SyncMetadata? metadataFor(String userId) => _remoteMetadata[userId];
 
   @override
   Future<bool> isConnected() async => connected;
