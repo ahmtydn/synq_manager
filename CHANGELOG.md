@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.1.6]
+### Fixed
+- 🐛 **Initialization State**: Fixed initialization state flag to be set before async operations to prevent race conditions during setup
+
 ## [2.1.5]
 ### Added
 - 🔄 **External Change Detection**: New `changeStream()` method on `LocalAdapter` and `changeStream` getter on `RemoteAdapter` to enable real-time change notifications

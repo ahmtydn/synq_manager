@@ -171,10 +171,9 @@ class SynqManager<T extends SyncableEntity> {
     try {
       await _initializeAdapters();
       _initializeSyncComponents();
+      _initialized = true;
       await _setupAutoSyncIfEnabled();
       await _subscribeToChangeStreams();
-
-      _initialized = true;
       _logger.info('SynqManager initialized successfully');
     } on Object catch (e, stack) {
       _logger.error('Initialization failed', stack);

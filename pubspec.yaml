@@ -1,6 +1,6 @@
 name: synq_manager
 description: Offline-first data synchronization engine with intelligent conflict resolution and real-time events.
-version: 2.1.5
+version: 2.1.6
 homepage: https://github.com/ahmtydn/synq_manager
 environment:
   sdk: ">=3.0.0 <4.0.0"
