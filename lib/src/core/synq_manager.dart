@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:crypto/crypto.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:synq_manager/src/adapters/local_adapter.dart';
 import 'package:synq_manager/src/adapters/remote_adapter.dart';
@@ -86,8 +87,8 @@ class SynqManager<T extends SyncableEntity> {
       BehaviorSubject<SyncStatusSnapshot>();
   final List<SynqMiddleware<T>> _middlewares = [];
   final Map<String, Timer> _autoSyncTimers = {};
-  final SynqMetrics _metrics = SynqMetrics();
-  final Set<String> _processedChangeKeys = {};
+  final _metrics = SynqMetrics();
+  final Map<String, String> _processedChangeKeys = {};
 
   late final QueueManager<T> _queueManager;
   late final ConflictDetector<T> _conflictDetector;
@@ -182,7 +183,7 @@ class SynqManager<T extends SyncableEntity> {
       _initialized = true;
       await _setupAutoSyncIfEnabled();
       await _subscribeToChangeStreams();
-      _logger.info('SynqManager initialized successfully');
+      _logger.info('SynqManager initialized successfully.');
     } on Object catch (e, stack) {
       _logger.error('Initialization failed', stack);
       _emitError('', 'Initialization failed: $e', stack);
@@ -626,7 +627,7 @@ class SynqManager<T extends SyncableEntity> {
       await _queueManager.dispose();
       await localAdapter.dispose();
 
-      _logger.info('SynqManager disposed successfully');
+      _logger.info('SynqManager disposed successfully.');
     } on Object catch (e, stack) {
       _logger.error('Error during disposal', stack);
       // Don't rethrow - disposal should be best-effort
@@ -940,8 +941,9 @@ class SynqManager<T extends SyncableEntity> {
 
     try {
       final changeKey = _computeChangeKey(change);
+      final dataHash = _computeDataHash(change.data);
 
-      if (_isAlreadyProcessed(changeKey)) {
+      if (_isAlreadyProcessed(changeKey, dataHash)) {
         _logger.debug('Skipping duplicate change: $changeKey');
         return;
       }
@@ -953,18 +955,18 @@ class SynqManager<T extends SyncableEntity> {
 
       if (await _isDuplicateOfPendingOperation(change)) {
         _logger.debug('Change already queued in pending operations');
-        _markAsProcessed(changeKey);
+        _markAsProcessed(changeKey, dataHash);
         return;
       }
 
       if (await _isDataAlreadyCurrent(change)) {
         _logger.debug('Local data already matches change');
-        _markAsProcessed(changeKey);
+        _markAsProcessed(changeKey, dataHash);
         return;
       }
 
       await _applyExternalChange(change);
-      _markAsProcessed(changeKey);
+      _markAsProcessed(changeKey, dataHash);
 
       _logger.debug('External change processed successfully: $changeKey');
     } on Object catch (e, stack) {
@@ -985,12 +987,25 @@ class SynqManager<T extends SyncableEntity> {
         '${change.timestamp.millisecondsSinceEpoch}';
   }
 
-  bool _isAlreadyProcessed(String changeKey) {
-    return _processedChangeKeys.contains(changeKey);
+  String _computeDataHash(T? data) {
+    if (data == null) {
+      return 'null';
+    }
+    try {
+      final payload = _extractDataPayload(data.toJson()).toString();
+      return sha1.convert(payload.codeUnits).toString();
+    } on Object catch (_) {
+      return data.hashCode.toString();
+    }
   }
 
-  void _markAsProcessed(String changeKey) {
-    _processedChangeKeys.add(changeKey);
+  bool _isAlreadyProcessed(String changeKey, String dataHash) {
+    return _processedChangeKeys.containsKey(changeKey) &&
+        _processedChangeKeys[changeKey] == dataHash;
+  }
+
+  void _markAsProcessed(String changeKey, String dataHash) {
+    _processedChangeKeys[changeKey] = dataHash;
     _pruneProcessedChangesCache();
   }
 
@@ -1000,8 +1015,8 @@ class SynqManager<T extends SyncableEntity> {
     }
 
     final excessCount = _processedChangeKeys.length - _maxProcessedChangesCache;
-    final keysToRemove = _processedChangeKeys.take(excessCount).toList();
-    _processedChangeKeys.removeAll(keysToRemove);
+    final keysToRemove = _processedChangeKeys.keys.take(excessCount).toList();
+    _processedChangeKeys.removeWhere((key, _) => keysToRemove.contains(key));
 
     _logger.debug('Pruned $excessCount old change keys from cache');
   }
