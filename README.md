@@ -92,7 +92,7 @@ import 'package:synq_manager/synq_manager.dart';
 
 class Task implements SyncableEntity {
   @override
-  final String id;
+  final int version;
 
   @override
   final String userId;
@@ -103,7 +103,7 @@ class Task implements SyncableEntity {
   @override
   final DateTime modifiedAt;
 
-  @override
+    required this.version,
   final DateTime createdAt;
 
   @override
@@ -115,7 +115,7 @@ class Task implements SyncableEntity {
   Task({
     required this.id,
     required this.userId,
-    required this.title,
+    'version': version,
     this.completed = false,
     required this.modifiedAt,
     required this.createdAt,
@@ -126,7 +126,7 @@ class Task implements SyncableEntity {
   @override
   Map<String, dynamic> toMap() => {
     'id': id,
-    'userId': userId,
+    version: json['version'] is int ? json['version'] : int.parse(json['version'].toString()),
     'title': title,
     'completed': completed,
     'modifiedAt': modifiedAt.toIso8601String(),
@@ -134,7 +134,7 @@ class Task implements SyncableEntity {
     'version': version,
     'isDeleted': isDeleted,
   };
-
+    int? version,
   factory Task.fromJson(Map<String, dynamic> json) => Task(
     id: json['id'],
     userId: json['userId'],
@@ -146,10 +146,21 @@ class Task implements SyncableEntity {
     isDeleted: json['isDeleted'] ?? false,
   );
 
-  @override
+        version: version ?? this.version,
   Task copyWith({
     String? userId,
     DateTime? modifiedAt,
+  @override
+  Map<String, dynamic>? diff(SyncableEntity oldVersion) {
+    final changes = <String, dynamic>{};
+    if (oldVersion is! Task) return null;
+    if (title != oldVersion.title) changes['title'] = title;
+    if (completed != oldVersion.completed) changes['completed'] = completed;
+    if (modifiedAt != oldVersion.modifiedAt) changes['modifiedAt'] = modifiedAt.toIso8601String();
+    if (isDeleted != oldVersion.isDeleted) changes['isDeleted'] = isDeleted;
+    if (version != oldVersion.version) changes['version'] = version;
+    return changes.isEmpty ? null : changes;
+  }
     String? version,
     bool? isDeleted,
     String? title,
@@ -770,6 +781,118 @@ class TaskIndexConfig extends IndexConfig<Task> {
 ```
 
 
+
+
+### 🛠️ Schema Migrations & MigrationExecutor
+
+Schema migrations allow you to evolve your local database schema safely as your app grows. The `MigrationExecutor` class orchestrates the migration process, ensuring your data is upgraded to the latest schema version without data loss.
+
+#### How Migration Works
+
+- Each migration describes how to transform data from one schema version to the next.
+- On app startup, the `MigrationExecutor` checks the current schema version in the local database.
+- If the version is outdated, it applies all necessary migrations in order, updating the schema and data.
+- Observers can be notified of migration start/end events for logging or UI feedback.
+
+#### Example: Defining and Running Migrations
+
+```dart
+// 1. Define your migrations
+final migrations = [
+  Migration(
+    fromVersion: 1,
+    toVersion: 2,
+    migrate: (raw) {
+      // Example: Add a new field with a default value
+      return {...raw, 'newField': 'default'};
+    },
+  ),
+  // Add more migrations as needed
+];
+
+// 2. Create the MigrationExecutor
+final executor = MigrationExecutor<Task>(
+  localAdapter: myLocalAdapter,
+  migrations: migrations,
+  targetVersion: 2,
+  logger: myLogger,
+  observers: [/* optional observers */],
+);
+
+// 3. Run migrations on app startup
+if (await executor.needsMigration()) {
+  await executor.execute();
+}
+```
+
+#### Production Guidance
+
+- Always increment your schema version and add a new `Migration` when changing your entity structure.
+- Test migrations thoroughly with real data before releasing to production.
+- Use observers to log or display migration progress to users if migrations may take time.
+- Never remove or reorder old migrations; always append new ones for forward-only upgrades.
+
+**See also:**
+- `Migration` class for migration definition
+- `MigrationExecutor` for orchestration
+
+---
+### 📝 SyncMetadata Usage & SQL Integration
+
+`SyncMetadata` describes the synchronization state for a specific user. It is useful for tracking last sync time, data integrity, and device-specific sync state.
+
+**Example usage:**
+
+```dart
+final metadata = SyncMetadata(
+  userId: 'user123',
+  lastSyncTime: DateTime.now(),
+  dataHash: 'abc123',
+  itemCount: 42,
+  deviceId: 'device-xyz',
+  customMetadata: {'customKey': 'customValue'},
+);
+
+// Convert to map for storage
+final map = metadata.toMap();
+
+// Restore from JSON
+final restored = SyncMetadata.fromJson(map);
+```
+
+#### SQL Table Example
+
+To store `SyncMetadata` in a remote SQL database, you can use a table like:
+
+```sql
+CREATE TABLE sync_metadata (
+  user_id TEXT PRIMARY KEY,
+  last_sync_time TEXT NOT NULL,
+  data_hash TEXT NOT NULL,
+  item_count INTEGER NOT NULL,
+  device_id TEXT,
+  custom_metadata JSONB
+);
+```
+
+#### Insert/Update Query Example
+
+```sql
+INSERT INTO sync_metadata (user_id, last_sync_time, data_hash, item_count, device_id, custom_metadata)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT(user_id) DO UPDATE SET
+  last_sync_time = excluded.last_sync_time,
+  data_hash = excluded.data_hash,
+  item_count = excluded.item_count,
+  device_id = excluded.device_id,
+  custom_metadata = excluded.custom_metadata;
+```
+
+> Replace `?` with parameterized values from your `SyncMetadata.toMap()`.
+
+**Note:** For PostgreSQL, use `JSONB` for `custom_metadata`. For SQLite, use `TEXT` and store JSON as a string.
+
+---
 ### 🔍 Querying: SynqQuery, Pagination & SynqQuerySqlConverter
 
 #### SynqQuery
