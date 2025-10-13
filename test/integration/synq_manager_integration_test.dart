@@ -7,7 +7,9 @@ import 'package:synq_manager/src/events/data_change_event.dart';
 import 'package:synq_manager/src/events/initial_sync_event.dart';
 import 'package:synq_manager/src/events/sync_event.dart';
 import 'package:synq_manager/src/models/sync_result.dart';
+import 'package:synq_manager/src/models/sync_scope.dart';
 import 'package:synq_manager/src/query/pagination.dart';
+import 'package:synq_manager/src/query/synq_query.dart';
 import 'package:synq_manager/src/resolvers/last_write_wins_resolver.dart';
 
 import '../mocks/mock_adapters.dart';
@@ -435,9 +437,139 @@ void main() {
       );
 
       final user2Stream = manager.watchAll(userId: 'user2');
-      expect(user2Stream,
-          emitsInOrder([isEmpty, (List<TestEntity> list) => list.length == 1]));
+      expect(
+        user2Stream,
+        emitsInOrder([isEmpty, (List<TestEntity> list) => list.length == 1]),
+      );
       await manager.save(user2Entity, 'user2');
+    });
+
+    test('sync with scope performs a partial sync', () async {
+      // 1. Setup remote data with two items
+      final remoteEntity1 = TestEntity(
+        id: 'remote1',
+        userId: 'user1',
+        name: 'Recent Item',
+        value: 1,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+      final remoteEntity2 = TestEntity(
+        id: 'remote2',
+        userId: 'user1',
+        name: 'Old Item',
+        value: 2,
+        modifiedAt: DateTime.now().subtract(const Duration(days: 40)),
+        createdAt: DateTime.now().subtract(const Duration(days: 40)),
+        version: 1,
+      );
+      remoteAdapter
+        ..addRemoteItem('user1', remoteEntity1)
+        ..addRemoteItem('user1', remoteEntity2);
+
+      // 2. Add a local-only item that should not be deleted
+      final localOnlyEntity = TestEntity(
+        id: 'local-only',
+        userId: 'user1',
+        name: 'Local Only Item',
+        value: 3,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+      await manager.save(localOnlyEntity, 'user1');
+
+      // 3. Perform a partial sync with a scope for recent items
+      final thirtyDaysAgo =
+          DateTime.now().subtract(const Duration(days: 30)).toIso8601String();
+      final scope = SyncScope({'minModifiedDate': thirtyDaysAgo});
+      await manager.sync('user1', scope: scope);
+
+      // 4. Assertions
+      final localItems = await manager.getAll(userId: 'user1');
+      expect(localItems, hasLength(2)); // Recent remote item + local-only item
+
+      // Check that the recent item was synced
+      expect(
+        localItems.any((item) => item.id == 'remote1'),
+        isTrue,
+        reason: 'Recent remote item should be synced',
+      );
+
+      // Check that the old item was NOT synced
+      expect(
+        localItems.any((item) => item.id == 'remote2'),
+        isFalse,
+        reason: 'Old remote item should be out of scope',
+      );
+
+      // Check that the local-only item was NOT deleted
+      expect(
+        localItems.any((item) => item.id == 'local-only'),
+        isTrue,
+        reason: 'Local-only item should not be deleted during partial sync',
+      );
+    });
+
+    test('per-operation retry logic increments retry count on failure',
+        () async {
+      // 1. Setup two entities to sync, one of which will fail
+      final successEntity = TestEntity(
+        id: 'success1',
+        userId: 'user1',
+        name: 'Will Succeed',
+        value: 1,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+      final failEntity = TestEntity(
+        id: 'fail1',
+        userId: 'user1',
+        name: 'Will Fail',
+        value: 2,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+      await manager.save(successEntity, 'user1');
+      await manager.save(failEntity, 'user1');
+
+      // 2. Configure remote adapter to fail one of the pushes
+      remoteAdapter.setFailedIds(['fail1']);
+
+      // 3. Perform sync
+      final result = await manager.sync('user1');
+
+      // 4. Assertions
+      expect(result.syncedCount, 1); // The successful one
+      expect(
+        result.failedCount,
+        0,
+      ); // Retryable error doesn't count as hard fail
+      expect(result.pendingOperations, hasLength(1)); // The failed one remains
+
+      // Verify the successful item is on the remote
+      final remoteItems = await remoteAdapter.fetchAll('user1');
+      expect(remoteItems, hasLength(1));
+      expect(remoteItems.first.id, 'success1');
+
+      // Verify the failed operation is still in the queue with an increased retry count
+      final pendingOps = await localAdapter.getPendingOperations('user1');
+      expect(pendingOps, hasLength(1));
+      expect(pendingOps.first.entityId, 'fail1');
+      expect(pendingOps.first.retryCount, 1);
+
+      // 5. Second sync attempt (now succeeding)
+      remoteAdapter.setFailedIds([]); // Allow it to succeed now
+      final secondResult = await manager.sync('user1');
+
+      // Assert that the second sync cleared the queue
+      expect(secondResult.syncedCount, 1);
+      expect(secondResult.pendingOperations, isEmpty);
+      expect(await manager.getPendingCount('user1'), 0);
+      expect(await remoteAdapter.fetchAll('user1'), hasLength(2));
     });
 
     test('tracks sync statistics', () async {
@@ -660,6 +792,123 @@ void main() {
       expect(allEvents[4].items, hasLength(2));
       expect(allEvents[4].totalCount, 2);
       expect(allEvents[4].hasMore, isFalse);
+
+      await subscription.cancel();
+    });
+
+    test('getByIds fetches multiple items correctly', () async {
+      final entity1 = TestEntity(
+        id: 'e1',
+        userId: 'user1',
+        name: 'Item 1',
+        value: 1,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+      final entity2 = TestEntity(
+        id: 'e2',
+        userId: 'user1',
+        name: 'Item 2',
+        value: 2,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+      await localAdapter.save(entity1, 'user1');
+      await localAdapter.save(entity2, 'user1');
+
+      final result = await localAdapter.getByIds(['e1', 'e2', 'e3'], 'user1');
+
+      expect(result, isA<Map<String, TestEntity>>());
+      expect(result.length, 2);
+      expect(result.containsKey('e1'), isTrue);
+      expect(result.containsKey('e2'), isTrue);
+      expect(result.containsKey('e3'), isFalse);
+      expect(result['e1']!.name, 'Item 1');
+    });
+
+    test('transaction rolls back on error', () async {
+      final entity1 = TestEntity(
+        id: 'tx1',
+        userId: 'user1',
+        name: 'TX Item 1',
+        value: 1,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+
+      // Attempt a transaction that will fail
+      await expectLater(
+        localAdapter.transaction(() async {
+          await localAdapter.save(entity1, 'user1');
+          // This should be present inside the transaction
+          expect(await localAdapter.getById('tx1', 'user1'), isNotNull);
+          throw Exception('Simulated transaction failure');
+        }),
+        throwsA(isA<Exception>()),
+      );
+
+      // Verify that the save was rolled back
+      final retrieved = await localAdapter.getById('tx1', 'user1');
+      expect(retrieved, isNull);
+    });
+
+    test('watchQuery emits filtered lists on data changes', () async {
+      // 1. Create entities with different 'completed' states
+      final pendingEntity1 = TestEntity(
+        id: 'pending1',
+        userId: 'user1',
+        name: 'Pending Task 1',
+        value: 1,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+      final completedEntity = TestEntity(
+        id: 'completed1',
+        userId: 'user1',
+        name: 'Completed Task',
+        value: 2,
+        completed: true,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+
+      // 2. Define a query to watch only pending items
+      const query = SynqQuery({'completed': false});
+      final stream = manager.watchQuery(query, userId: 'user1');
+
+      final completer = Completer<List<List<TestEntity>>>();
+      final receivedEvents = <List<TestEntity>>[];
+
+      final subscription = stream.listen((items) {
+        receivedEvents.add(items);
+        // Expect 4 states: initial, add pending, add completed, update pending
+        if (receivedEvents.length == 4) {
+          completer.complete(receivedEvents);
+        }
+      });
+
+      // 3. Sequence of operations
+      await manager.save(pendingEntity1, 'user1');
+      await manager.save(completedEntity, 'user1');
+      await manager.save(pendingEntity1.copyWith(completed: true), 'user1');
+
+      final allEvents = await completer.future;
+
+      // 4. Assertions
+      // Initial state is empty
+      expect(allEvents[0], isEmpty);
+      // After adding a pending item, list has 1
+      expect(allEvents[1], hasLength(1));
+      expect(allEvents[1].first.id, 'pending1');
+      // After adding a completed item, list is unchanged (still 1)
+      expect(allEvents[2], hasLength(1));
+      // After updating the pending item to completed, list becomes empty
+      expect(allEvents[3], isEmpty);
 
       await subscription.cancel();
     });

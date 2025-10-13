@@ -17,6 +17,7 @@ import 'package:synq_manager/src/models/exceptions.dart';
 import 'package:synq_manager/src/models/sync_metadata.dart';
 import 'package:synq_manager/src/models/sync_operation.dart';
 import 'package:synq_manager/src/models/sync_result.dart';
+import 'package:synq_manager/src/models/sync_scope.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
 import 'package:synq_manager/src/resolvers/sync_conflict_resolver.dart';
 import 'package:synq_manager/src/utils/connectivity_checker.dart';
@@ -97,6 +98,7 @@ class SyncEngine<T extends SyncableEntity> {
     String userId, {
     bool force = false,
     SyncOptions? options,
+    SyncScope? scope,
   }) async {
     if (_activeSyncs.contains(userId)) {
       throw StateError('Sync already in progress for user $userId');
@@ -160,6 +162,7 @@ class SyncEngine<T extends SyncableEntity> {
           );
         },
         onFailed: (operation, error, stackTrace) {
+          // This path is now for non-retryable errors or exhausted retries.
           failed += 1;
           errors.add(error);
           logger.warn(
@@ -190,12 +193,13 @@ class SyncEngine<T extends SyncableEntity> {
       _ensureNotTimedOut(deadline);
 
       if (shouldSyncRemotely) {
-        final remoteItems = await remoteAdapter.fetchAll(userId);
+        final remoteItems = await remoteAdapter.fetchAll(userId, scope: scope);
         final remoteSummary = await _reconcileRemoteItems(
           userId,
           remoteItems,
           deadline: deadline,
           resolveConflicts: options?.resolveConflicts ?? true,
+          isPartialSync: scope != null,
           localMetadata: localMetadata,
           remoteMetadata: remoteMetadata,
           onConflictResolved: (resolution, context, localItem, remoteItem) {
@@ -429,6 +433,7 @@ class SyncEngine<T extends SyncableEntity> {
       StackTrace stackTrace,
     ) onFailed,
   }) async {
+    // This method now handles the retry logic internally.
     if (operations.isEmpty) return;
 
     final includeDeletes = options?.includeDeletes ?? true;
@@ -492,8 +497,24 @@ class SyncEngine<T extends SyncableEntity> {
           await _notifyAfterOperation(operation, remoteResult);
           onCompleted(operation, remoteResult);
         } on Object catch (error, stackTrace) {
-          await _notifyOperationError(operation, error, stackTrace);
-          onFailed(operation, error, stackTrace);
+          // Implement per-operation retry logic
+          final canRetry =
+              error is NetworkException || error is AdapterException;
+          if (canRetry && operation.retryCount < config.maxRetries) {
+            logger.debug(
+              'Operation ${operation.id} failed, scheduling for retry '
+              '(${operation.retryCount + 1}/${config.maxRetries})',
+            );
+            final updatedOp = operation.copyWith(
+              retryCount: operation.retryCount + 1,
+              lastAttemptAt: DateTime.now(),
+            );
+            await queueManager.update(userId, updatedOp);
+            continue; // Continue to the next operation in the batch
+          } else {
+            await _notifyOperationError(operation, error, stackTrace);
+            onFailed(operation, error, stackTrace);
+          }
         }
       }
     }
@@ -503,6 +524,7 @@ class SyncEngine<T extends SyncableEntity> {
     String userId,
     List<T> remoteItems, {
     required bool resolveConflicts,
+    required bool isPartialSync,
     required DateTime? deadline,
     required SyncMetadata? localMetadata,
     required SyncMetadata? remoteMetadata,
@@ -530,17 +552,25 @@ class SyncEngine<T extends SyncableEntity> {
         return const _RemoteSyncSummary();
       }
 
-      final deletions = await _applyRemoteDeletions(
-        userId,
-        remoteIds: const <String>{},
-        pendingIds: pendingIds,
-        deadline: deadline,
-      );
-      return _RemoteSyncSummary(remoteDeletes: deletions);
+      // Do not perform deletions if it's a partial sync
+      if (!isPartialSync) {
+        final deletions = await _applyRemoteDeletions(
+          userId,
+          remoteIds: const <String>{},
+          pendingIds: pendingIds,
+          deadline: deadline,
+        );
+        return _RemoteSyncSummary(remoteDeletes: deletions);
+      }
+      return const _RemoteSyncSummary();
     }
 
     final remoteIds = <String>{};
     var conflictCount = 0;
+
+    // Batch-fetch all relevant local items at once to avoid N+1 queries.
+    final remoteItemIds = remoteItems.map((item) => item.id).toList();
+    final localItemsMap = await localAdapter.getByIds(remoteItemIds, userId);
 
     for (final remoteItem in remoteItems) {
       _ensureNotTimedOut(deadline);
@@ -552,7 +582,7 @@ class SyncEngine<T extends SyncableEntity> {
 
       remoteIds.add(remoteItem.id);
 
-      final localItem = await localAdapter.getById(remoteItem.id, userId);
+      final localItem = localItemsMap[remoteItem.id];
 
       if (remoteItem.isDeleted) {
         if (!pendingIds.contains(remoteItem.id)) {
@@ -624,13 +654,16 @@ class SyncEngine<T extends SyncableEntity> {
       }
     }
 
-    final deletions = await _applyRemoteDeletions(
-      userId,
-      remoteIds: remoteIds,
-      pendingIds: pendingIds,
-      deadline: deadline,
-    );
-
+    var deletions = 0;
+    // Only apply deletions if this is a full sync
+    if (!isPartialSync) {
+      deletions = await _applyRemoteDeletions(
+        userId,
+        remoteIds: remoteIds,
+        pendingIds: pendingIds,
+        deadline: deadline,
+      );
+    }
     return _RemoteSyncSummary(
       remoteConflicts: conflictCount,
       remoteDeletes: deletions,

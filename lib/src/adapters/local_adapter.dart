@@ -1,8 +1,4 @@
-import 'package:synq_manager/src/models/change_detail.dart';
-import 'package:synq_manager/src/models/sync_metadata.dart';
-import 'package:synq_manager/src/models/sync_operation.dart';
-import 'package:synq_manager/src/models/syncable_entity.dart';
-import 'package:synq_manager/src/query/pagination.dart';
+import 'package:synq_manager/synq_manager.dart';
 
 /// Local storage adapter abstraction that provides access to offline data.
 abstract class LocalAdapter<T extends SyncableEntity> {
@@ -46,11 +42,22 @@ abstract class LocalAdapter<T extends SyncableEntity> {
     return null;
   }
 
+  /// Watch a subset of items matching a query.
+  ///
+  /// Returns a stream that emits the list of items whenever data changes.
+  /// Return null if the adapter doesn't support reactive queries.
+  Stream<List<T>>? watchQuery(SynqQuery query, {String? userId}) {
+    return null;
+  }
+
   /// Fetch all items belonging to the given user.
   Future<List<T>> getAll({String? userId});
 
   /// Fetch a single item by its identifier for the given user.
   Future<T?> getById(String id, String userId);
+
+  /// Fetch multiple items by their identifiers for the given user.
+  Future<Map<String, T>> getByIds(List<String> ids, String userId);
 
   /// Fetch a paginated list of items.
   Future<PaginatedResult<T>> getAllPaginated(
@@ -82,6 +89,13 @@ abstract class LocalAdapter<T extends SyncableEntity> {
 
   /// Persist updated metadata for the user's sync state.
   Future<void> updateSyncMetadata(SyncMetadata metadata, String userId);
+
+  /// Executes a block of code within a transaction.
+  ///
+  /// All database operations within the `action` block are treated as a single
+  /// atomic unit. If the future returned by `action` completes with an error,
+  /// all changes are rolled back.
+  Future<R> transaction<R>(Future<R> Function() action);
 
   /// Dispose of underlying resources (close boxes, connections, etc.).
   Future<void> dispose();

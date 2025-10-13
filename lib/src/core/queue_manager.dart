@@ -51,6 +51,23 @@ class QueueManager<T extends SyncableEntity> {
     );
   }
 
+  /// Updates an existing operation in the queue.
+  /// Used for tracking retries.
+  Future<void> update(String userId, SyncOperation<T> operation) async {
+    final list = _pendingByUser[userId];
+    if (list == null) return;
+
+    final index = list.indexWhere((op) => op.id == operation.id);
+    if (index != -1) {
+      list[index] = operation;
+      // This assumes the local adapter can overwrite an existing operation
+      // based on its ID. This might require a change in the adapter's
+      // `addPendingOperation` or a new `updatePendingOperation` method.
+      await localAdapter.addPendingOperation(userId, operation);
+      _controllers[userId]?.add(List.unmodifiable(list));
+    }
+  }
+
   /// Marks an operation as completed and removes it from the queue.
   Future<void> markCompleted(String userId, String operationId) async {
     final list = _pendingByUser[userId];

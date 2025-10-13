@@ -31,6 +31,18 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   }
 
   @override
+  Future<Map<String, T>> getByIds(List<String> ids, String userId) async {
+    final userStorage = _storage[userId];
+    if (userStorage == null) return {};
+
+    final results = <String, T>{};
+    for (final id in ids) {
+      if (userStorage.containsKey(id)) results[id] = userStorage[id]!;
+    }
+    return results;
+  }
+
+  @override
   Future<void> save(T item, String userId) async {
     _storage.putIfAbsent(userId, () => {});
     _storage[userId]![item.id] = item;
@@ -193,5 +205,47 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
         .asyncMap((_) => getAllPaginated(config, userId: userId));
 
     return Rx.concat([initialDataStream, updateStream]);
+  }
+
+  @override
+  Stream<List<T>>? watchQuery(SynqQuery query, {String? userId}) {
+    final stream = changeStream();
+    if (stream == null) return null;
+
+    // Helper to apply query
+    Future<List<T>> getFiltered() async {
+      var items = await getAll(userId: userId);
+      // Simple mock implementation for a 'completed' filter on Task
+      if (query.filters.containsKey('completed')) {
+        items = items.where((item) {
+          final json = item.toJson();
+          return json['completed'] == query.filters['completed'];
+        }).toList();
+      }
+      return items;
+    }
+
+    final initialDataStream = Stream.fromFuture(getFiltered());
+    final updateStream = stream.asyncMap((_) => getFiltered());
+
+    return Rx.concat([initialDataStream, updateStream]);
+  }
+
+  @override
+  Future<R> transaction<R>(Future<R> Function() action) async {
+    // This is a simplified mock transaction. It doesn't provide true rollback
+    // for the in-memory map, but it allows testing the flow.
+    final backupStorage = _storage.map<String, Map<String, T>>(
+      (key, value) => MapEntry(key, Map<String, T>.from(value)),
+    );
+    try {
+      return await action();
+    } catch (e) {
+      // Restore from backup on error
+      _storage
+        ..clear()
+        ..addAll(backupStorage);
+      rethrow;
+    }
   }
 }

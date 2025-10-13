@@ -12,6 +12,7 @@ class TestEntity implements SyncableEntity {
     required this.createdAt,
     required this.version,
     this.isDeleted = false,
+    this.completed = false,
   });
 
   factory TestEntity.fromJson(Map<String, dynamic> json) => TestEntity(
@@ -23,6 +24,7 @@ class TestEntity implements SyncableEntity {
         createdAt: DateTime.parse(json['createdAt'] as String),
         version: json['version'] as int,
         isDeleted: json['isDeleted'] as bool? ?? false,
+        completed: json['completed'] as bool? ?? false,
       );
 
   @override
@@ -33,6 +35,7 @@ class TestEntity implements SyncableEntity {
 
   final String name;
   final int value;
+  final bool completed;
 
   @override
   final DateTime modifiedAt;
@@ -56,6 +59,7 @@ class TestEntity implements SyncableEntity {
         'createdAt': createdAt.toIso8601String(),
         'version': version,
         'isDeleted': isDeleted,
+        'completed': completed,
       };
 
   TestEntity copyWith({
@@ -67,6 +71,7 @@ class TestEntity implements SyncableEntity {
     DateTime? createdAt,
     int? version,
     bool? isDeleted,
+    bool? completed,
   }) =>
       TestEntity(
         id: id ?? this.id,
@@ -77,6 +82,7 @@ class TestEntity implements SyncableEntity {
         createdAt: createdAt ?? this.createdAt,
         version: version ?? this.version,
         isDeleted: isDeleted ?? this.isDeleted,
+        completed: completed ?? this.completed,
       );
 
   @override
@@ -89,7 +95,8 @@ class TestEntity implements SyncableEntity {
           name == other.name &&
           value == other.value &&
           version == other.version &&
-          isDeleted == other.isDeleted;
+          isDeleted == other.isDeleted &&
+          completed == other.completed;
 
   @override
   int get hashCode =>
@@ -98,5 +105,6 @@ class TestEntity implements SyncableEntity {
       name.hashCode ^
       value.hashCode ^
       version.hashCode ^
-      isDeleted.hashCode;
+      isDeleted.hashCode ^
+      completed.hashCode;
 }

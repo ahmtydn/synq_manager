@@ -40,7 +40,7 @@ class SyncOperation<T extends SyncableEntity> {
     required this.timestamp,
     this.data,
     this.retryCount = 0,
-    this.status = SyncOperationStatus.pending,
+    this.lastAttemptAt,
   });
 
   /// Unique identifier for the operation.
@@ -64,8 +64,8 @@ class SyncOperation<T extends SyncableEntity> {
   /// Number of retry attempts.
   final int retryCount;
 
-  /// Current status of the operation.
-  final SyncOperationStatus status;
+  /// The timestamp of the last retry attempt.
+  final DateTime? lastAttemptAt;
 
   /// Creates a copy with modified fields.
   SyncOperation<T> copyWith({
@@ -76,7 +76,7 @@ class SyncOperation<T extends SyncableEntity> {
     String? entityId,
     DateTime? timestamp,
     int? retryCount,
-    SyncOperationStatus? status,
+    DateTime? lastAttemptAt,
   }) {
     return SyncOperation<T>(
       id: id ?? this.id,
@@ -86,7 +86,7 @@ class SyncOperation<T extends SyncableEntity> {
       entityId: entityId ?? this.entityId,
       timestamp: timestamp ?? this.timestamp,
       retryCount: retryCount ?? this.retryCount,
-      status: status ?? this.status,
+      lastAttemptAt: lastAttemptAt ?? this.lastAttemptAt,
     );
   }
 
@@ -99,7 +99,8 @@ class SyncOperation<T extends SyncableEntity> {
       'entityId': entityId,
       'timestamp': timestamp.toIso8601String(),
       'retryCount': retryCount,
-      'status': status.name,
+      if (lastAttemptAt != null)
+        'lastAttemptAt': lastAttemptAt!.toIso8601String(),
       if (data != null && serializer != null) 'data': serializer(data!),
     };
   }
@@ -122,10 +123,9 @@ class SyncOperation<T extends SyncableEntity> {
       entityId: json['entityId'] as String,
       timestamp: DateTime.parse(json['timestamp'] as String),
       retryCount: json['retryCount'] as int? ?? 0,
-      status: SyncOperationStatus.values.firstWhere(
-        (value) => value.name == json['status'],
-        orElse: () => SyncOperationStatus.pending,
-      ),
+      lastAttemptAt: json['lastAttemptAt'] != null
+          ? DateTime.parse(json['lastAttemptAt'] as String)
+          : null,
     );
   }
 }

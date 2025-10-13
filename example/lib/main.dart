@@ -41,6 +41,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
   bool _isSyncing = false;
   String _syncStatus = 'Not synced';
   int _pendingOperations = 0;
+  String _currentFilter = 'All';
 
   @override
   void initState() {
@@ -72,8 +73,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
     // Set up the reactive stream for the task list.
     // The UI will now update automatically.
-    _tasksStream = _manager.watchAll(userId: _currentUserId);
-    unawaited(_updatePendingOperations());
+    _setTasksStream();
 
     _manager.onSyncProgress.listen((event) {
       setState(() {
@@ -97,6 +97,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
     setState(() {
       _isLoading = false;
     });
+    unawaited(_updatePendingOperations());
   }
 
   Future<void> _updatePendingOperations() async {
@@ -107,6 +108,21 @@ class _TaskListScreenState extends State<TaskListScreen> {
         _syncStatus = 'Synced';
       }
     });
+  }
+
+  void _setTasksStream() {
+    if (_currentFilter == 'Pending') {
+      // Use watchQuery to get only incomplete tasks
+      const query = SynqQuery({'completed': false});
+      setState(() {
+        _tasksStream = _manager.watchQuery(query, userId: _currentUserId);
+      });
+    } else {
+      // Use watchAll for all tasks
+      setState(() {
+        _tasksStream = _manager.watchAll(userId: _currentUserId);
+      });
+    }
   }
 
   Future<void> _addTask(String title) async {
@@ -294,6 +310,27 @@ class _TaskListScreenState extends State<TaskListScreen> {
         title: const Text('SynqManager Tasks'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (_currentFilter != value) {
+                setState(() {
+                  _currentFilter = value;
+                  _setTasksStream();
+                });
+              }
+            },
+            icon: const Icon(Icons.filter_list),
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'All',
+                child: Text('All Tasks'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'Pending',
+                child: Text('Pending Only'),
+              ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.bug_report),
             onPressed: _printAllData,

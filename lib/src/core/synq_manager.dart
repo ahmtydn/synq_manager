@@ -16,8 +16,10 @@ import 'package:synq_manager/src/middleware/synq_middleware.dart';
 import 'package:synq_manager/src/models/change_detail.dart';
 import 'package:synq_manager/src/models/sync_operation.dart';
 import 'package:synq_manager/src/models/sync_result.dart';
+import 'package:synq_manager/src/models/sync_scope.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
 import 'package:synq_manager/src/models/user_switch_result.dart';
+import 'package:synq_manager/src/query/synq_query.dart';
 import 'package:synq_manager/src/resolvers/last_write_wins_resolver.dart';
 import 'package:synq_manager/src/resolvers/sync_conflict_resolver.dart';
 import 'package:synq_manager/src/utils/connectivity_checker.dart';
@@ -264,6 +266,16 @@ class SynqManager<T extends SyncableEntity> {
         const Stream.empty();
   }
 
+  /// Returns a stream of entities matching the given query.
+  ///
+  /// The stream emits a new list of entities whenever the underlying data changes.
+  /// Returns an empty stream if the adapter does not support watching.
+  Stream<List<T>> watchQuery(SynqQuery query, {String? userId}) {
+    _ensureInitializedAndNotDisposed();
+    return localAdapter.watchQuery(query, userId: userId) ??
+        const Stream.empty();
+  }
+
   /// Persists an entity to local storage and queues for remote synchronization.
   ///
   /// Creates a new entity if `item.id` doesn't exist, otherwise updates.
@@ -376,6 +388,7 @@ class SynqManager<T extends SyncableEntity> {
     String userId, {
     bool force = false,
     SyncOptions? options,
+    SyncScope? scope,
   }) async {
     _ensureInitializedAndNotDisposed();
 
@@ -391,6 +404,7 @@ class SynqManager<T extends SyncableEntity> {
         userId,
         force: force,
         options: options,
+        scope: scope,
       );
 
       _updateMetricsAndStatistics(result, userId);

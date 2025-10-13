@@ -32,6 +32,7 @@ ud
 - **Seamless Offline Operation** - Full CRUD functionality without network
 - **Automatic Queue Management** - Operations queued and synced when online
 - **Smart Retry Logic** - Configurable retry strategies with exponential backoff
+- **Per-Operation Resiliency** - Transient errors on one item don't block the entire sync queue.
 
 ### ⚡ **Intelligent Conflict Resolution**
 - **Multiple Built-in Strategies** - Last-write-wins, local/remote priority, merge
@@ -41,12 +42,17 @@ ud
 ### 📊 **Real-Time Synchronization**
 - **Reactive Event Streams** - Listen to data changes, sync progress, conflicts
 - **Automatic Sync** - Background synchronization with configurable intervals
+- **Reactive Queries** - Watch live-updating lists, paginated data, or filtered subsets.
 - **Manual Sync Control** - Trigger sync on-demand or pause when needed
 
 ### 👥 **Multi-User Support**
 - **User Switching** - Seamless switching between user accounts
 - **Configurable Strategies** - Clear-and-fetch, sync-then-switch, keep-local
 - **Per-User Data Isolation** - Complete data separation by user
+
+### 🎯 **Partial Synchronization**
+- **Sync Scopes** - Fetch only a subset of data from the remote source (e.g., by date range).
+- **Efficient Data Transfer** - Reduce network usage and sync time for large datasets.
 
 ### 🔌 **Pluggable Architecture**
 - **Adapter System** - Support for Hive, SQLite, Firestore, or custom backends
@@ -222,6 +228,12 @@ manager.watchById('task-id', 'user123').listen((task) {
   print('Task details updated: ${task?.title}');
 });
 
+// Use watchQuery for filtered reactive lists.
+final pendingOnlyQuery = SynqQuery({'completed': false});
+manager.watchQuery(pendingOnlyQuery, userId: 'user123').listen((pendingTasks) {
+  print('Pending task list updated, count: ${pendingTasks.length}');
+});
+
 // ✏️ Update
 final updated = task.copyWith(
   completed: true,
@@ -249,6 +261,10 @@ manager.startAutoSync('user123');
 
 // 🎯 Force full sync
 await manager.sync('user123', force: true);
+
+// 🎯 Partial Sync (e.g., only recent items)
+final scope = SyncScope({'minModifiedDate': DateTime.now().subtract(const Duration(days: 30))});
+await manager.sync('user123', scope: scope);
 
 // ⏸️ Stop auto-sync
 manager.stopAutoSync(userId: 'user123');

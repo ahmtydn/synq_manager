@@ -14,15 +14,20 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
   final bool _isConnected = true;
 
   @override
-  Future<List<T>> fetchAll(String userId) async {
+  Future<List<T>> fetchAll(String userId, {SyncScope? scope}) async {
     if (!_isConnected) {
       throw Exception('No network connection');
     }
 
     // Simulate network delay
     await Future<void>.delayed(const Duration(milliseconds: 100));
-
-    return _remoteStorage[userId]?.values.toList() ?? [];
+    var items = _remoteStorage[userId]?.values.toList() ?? [];
+    if (scope?.filters['minModifiedDate'] != null) {
+      final minDate =
+          DateTime.parse(scope!.filters['minModifiedDate'] as String);
+      items = items.where((item) => item.modifiedAt.isAfter(minDate)).toList();
+    }
+    return items;
   }
 
   @override

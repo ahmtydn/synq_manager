@@ -1,13 +1,6 @@
 import 'dart:async';
 
-import 'package:rxdart/rxdart.dart';
-import 'package:synq_manager/src/adapters/local_adapter.dart';
-import 'package:synq_manager/src/adapters/remote_adapter.dart';
-import 'package:synq_manager/src/models/change_detail.dart';
-import 'package:synq_manager/src/models/sync_metadata.dart';
-import 'package:synq_manager/src/models/sync_operation.dart';
-import 'package:synq_manager/src/models/syncable_entity.dart';
-import 'package:synq_manager/src/query/pagination.dart';
+import 'package:synq_manager/synq_manager.dart';
 
 class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   final Map<String, Map<String, T>> _storage = {};
@@ -31,6 +24,18 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   @override
   Future<T?> getById(String id, String userId) async {
     return _storage[userId]?[id];
+  }
+
+  @override
+  Future<Map<String, T>> getByIds(List<String> ids, String userId) async {
+    final userStorage = _storage[userId];
+    if (userStorage == null) return {};
+
+    final results = <String, T>{};
+    for (final id in ids) {
+      if (userStorage.containsKey(id)) results[id] = userStorage[id]!;
+    }
+    return results;
   }
 
   @override
@@ -75,7 +80,14 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
     String userId,
     SyncOperation<T> operation,
   ) async {
-    _pendingOps.putIfAbsent(userId, () => []).add(operation);
+    final userOps = _pendingOps.putIfAbsent(userId, () => []);
+    // Handle updates for retry logic
+    final existingIndex = userOps.indexWhere((op) => op.id == operation.id);
+    if (existingIndex != -1) {
+      userOps[existingIndex] = operation;
+    } else {
+      userOps.add(operation);
+    }
   }
 
   @override
@@ -192,6 +204,50 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
 
     return Rx.concat([initialDataStream, updateStream]);
   }
+
+  @override
+  Stream<List<T>>? watchQuery(SynqQuery query, {String? userId}) {
+    final stream = changeStream();
+    if (stream == null) return null;
+
+    // Helper to apply query
+    Future<List<T>> getFiltered() async {
+      var items = await getAll(userId: userId);
+      // Mock implementation for a 'completed' filter on TestEntity
+      if (query.filters.containsKey('completed')) {
+        items = items.where((item) {
+          final json = item.toJson();
+          return json['completed'] == query.filters['completed'];
+        }).toList();
+      }
+      return items;
+    }
+
+    final initialDataStream = Stream.fromFuture(getFiltered());
+    final updateStream = stream.asyncMap((_) => getFiltered());
+
+    return Rx.concat([initialDataStream, updateStream]);
+  }
+
+  @override
+  Future<R> transaction<R>(Future<R> Function() action) async {
+    // This is a simplified mock transaction. It doesn't provide true rollback
+    // for the in-memory map, but it allows testing the flow.
+    // A real implementation (e.g., with semaphores or temporary state)
+    // would be more complex.
+    final backupStorage = _storage.map<String, Map<String, T>>(
+      (key, value) => MapEntry(key, Map<String, T>.from(value)),
+    );
+    try {
+      return await action();
+    } catch (e) {
+      // Restore from backup on error
+      _storage
+        ..clear()
+        ..addAll(backupStorage);
+      rethrow;
+    }
+  }
 }
 
 class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
@@ -206,9 +262,15 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
     ..addAll(ids);
 
   @override
-  Future<List<T>> fetchAll(String userId) async {
+  Future<List<T>> fetchAll(String userId, {SyncScope? scope}) async {
     if (!connected) throw Exception('No connection');
-    return _remoteStorage[userId]?.values.toList() ?? [];
+    var items = _remoteStorage[userId]?.values.toList() ?? [];
+    if (scope?.filters['minModifiedDate'] != null) {
+      final minDate =
+          DateTime.parse(scope!.filters['minModifiedDate'] as String);
+      items = items.where((item) => item.modifiedAt.isAfter(minDate)).toList();
+    }
+    return items;
   }
 
   @override
@@ -219,9 +281,9 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
 
   @override
   Future<T> push(T item, String userId) async {
-    if (!connected) throw Exception('No connection');
+    if (!connected) throw NetworkException('No connection');
     if (_failedIds.contains(item.id)) {
-      throw Exception('Simulated push failure for ${item.id}');
+      throw NetworkException('Simulated push failure for ${item.id}');
     }
     _remoteStorage.putIfAbsent(userId, () => {})[item.id] = item;
     _changeController.add(

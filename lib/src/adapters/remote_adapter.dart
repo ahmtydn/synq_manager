@@ -3,6 +3,7 @@ import 'package:synq_manager/src/models/conflict_context.dart';
 import 'package:synq_manager/src/models/conflict_resolution.dart';
 import 'package:synq_manager/src/models/sync_metadata.dart';
 import 'package:synq_manager/src/models/sync_operation.dart';
+import 'package:synq_manager/src/models/sync_scope.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
 
 /// Remote adapter abstraction for communicating with server-side data sources.
@@ -14,7 +15,7 @@ abstract class RemoteAdapter<T extends SyncableEntity> {
   Stream<ChangeDetail<T>>? get changeStream => null;
 
   /// Fetch all items belonging to the user from the remote source.
-  Future<List<T>> fetchAll(String userId);
+  Future<List<T>> fetchAll(String userId, {SyncScope? scope});
 
   /// Fetch a single item by identifier.
   Future<T?> fetchById(String id, String userId);
