@@ -47,15 +47,22 @@ void main() {
     });
 
     test('SyncCompletedEvent', () {
+      const result = SyncResult(
+        userId: userId,
+        syncedCount: 8,
+        failedCount: 2,
+        conflictsResolved: 0,
+        pendingOperations: const [],
+        duration: Duration.zero,
+      );
       final event = SyncCompletedEvent(
         userId: userId,
-        synced: 8,
-        failed: 2,
+        result: result,
         timestamp: timestamp,
       );
       expect(
         event.toString(),
-        'SyncEvent(userId: $userId, timestamp: $timestamp): SyncCompletedEvent(synced: 8, failed: 2)',
+        'SyncEvent(userId: $userId, timestamp: $timestamp): SyncCompletedEvent(result: $result)',
       );
     });
 

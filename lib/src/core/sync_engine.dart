@@ -88,6 +88,12 @@ class SyncEngine<T extends SyncableEntity> {
         failedOperations: 0,
       ),
     );
+    eventController.add(
+      SyncStartedEvent(
+        userId: userId,
+        pendingOperations: snapshot.pendingOperations,
+      ),
+    );
     _notifyObservers((o) => o.onSyncStart(userId));
     // Yield to the event loop to allow the 'syncing' status to be emitted
     // and observed by listeners before proceeding.
@@ -115,6 +121,7 @@ class SyncEngine<T extends SyncableEntity> {
       );
 
       _updateStatus(userId, SyncStatus.idle, clearErrors: true);
+      eventController.add(SyncCompletedEvent(userId: userId, result: result));
       _notifyObservers((o) => o.onSyncEnd(userId, result));
       await _notifyMiddlewares((m) => m.afterSync(userId, result));
       return result;
@@ -126,6 +133,7 @@ class SyncEngine<T extends SyncableEntity> {
         duration: stopwatch.elapsed,
         errors: [e],
       );
+      eventController.add(SyncCompletedEvent(userId: userId, result: result));
       _notifyObservers((o) => o.onSyncEnd(userId, result));
       await _notifyMiddlewares((m) => m.afterSync(userId, result));
       rethrow;
@@ -336,6 +344,14 @@ class SyncEngine<T extends SyncableEntity> {
         continue;
       }
 
+      eventController.add(
+        ConflictDetectedEvent(
+          userId: userId,
+          context: context,
+          localData: localItem,
+          remoteData: remoteItem,
+        ),
+      );
       _notifyObservers(
         (o) => o.onConflictDetected(context, localItem, remoteItem),
       );
@@ -411,7 +427,10 @@ class SyncEngine<T extends SyncableEntity> {
           : s.progress;
 
       return s.copyWith(
-          status: status, errors: newErrors, progress: newProgress,);
+        status: status,
+        errors: newErrors,
+        progress: newProgress,
+      );
     });
   }
 

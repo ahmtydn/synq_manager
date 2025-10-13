@@ -44,6 +44,15 @@ void main() {
           version: 0,
         ),
       );
+      registerFallbackValue(
+        SyncOperation<TestEntity>(
+          id: 'fallback',
+          userId: 'fallback',
+          entityId: 'fallback',
+          type: SyncOperationType.create,
+          timestamp: DateTime(0),
+        ),
+      );
     });
 
     setUp(() async {
@@ -71,6 +80,10 @@ void main() {
       when(() => remoteAdapter.isConnected()).thenAnswer((_) async => true);
       when(() => remoteAdapter.fetchAll(any(), scope: any(named: 'scope')))
           .thenAnswer((_) async => []);
+      when(() => localAdapter.getByIds(any(), any(that: isA<String>())))
+          .thenAnswer((_) async => {});
+      when(() => localAdapter.getAll(userId: any(named: 'userId')))
+          .thenAnswer((_) async => []);
       // Stub for migration check during initialization
       when(() => localAdapter.transaction(any()))
           .thenAnswer((invocation) async {
@@ -78,6 +91,10 @@ void main() {
             invocation.positionalArguments.first as Future<dynamic> Function();
         return action();
       });
+      when(() => localAdapter.updateSyncMetadata(any(), any()))
+          .thenAnswer((_) async {});
+      when(() => remoteAdapter.updateSyncMetadata(any(), any()))
+          .thenAnswer((_) async {});
 
       manager = SynqManager<TestEntity>(
         localAdapter: localAdapter,
@@ -308,7 +325,7 @@ void main() {
             .thenAnswer((_) async => []);
         when(() => localAdapter.getAll(userId: any(named: 'userId')))
             .thenAnswer((_) async => []);
-        when(() => localAdapter.getByIds(any(), any()))
+        when(() => localAdapter.getByIds(any(), any(that: isA<String>())))
             .thenAnswer((_) async => {});
         when(() => remoteAdapter.push(any(), any())).thenAnswer(
           (i) async => i.positionalArguments.first as TestEntity,
@@ -333,6 +350,326 @@ void main() {
         );
 
         await manager.sync(userId);
+      });
+
+      test('emits updated stats after a failed sync', () async {
+        // Arrange
+        final op1 = SyncOperation<TestEntity>(
+          id: 'op1',
+          userId: userId,
+          entityId: 'e1',
+          type: SyncOperationType.create,
+          timestamp: DateTime.now(),
+          data: TestEntity.create('e1', userId, 'Test 1'),
+        );
+        when(() => localAdapter.getPendingOperations(userId))
+            .thenAnswer((_) async => [op1]);
+        when(() => remoteAdapter.push(any(), any()))
+            .thenThrow(Exception('Sync failed'));
+        // Add stubs for the pull phase, which still runs even if push fails.
+        when(() => remoteAdapter.fetchAll(any(), scope: any(named: 'scope')))
+            .thenAnswer((_) async => []);
+        when(() => localAdapter.getByIds(any(), any()))
+            .thenAnswer((_) async => {});
+        when(() => localAdapter.getAll(userId: any(named: 'userId')))
+            .thenAnswer((_) async => []);
+        when(() => localAdapter.updateSyncMetadata(any(), any()))
+            .thenAnswer((_) async {});
+        when(() => remoteAdapter.updateSyncMetadata(any(), any()))
+            .thenAnswer((_) async {});
+
+        // Act & Assert
+        expect(
+          manager.watchSyncStatistics(),
+          emitsInOrder([
+            // Initial state
+            isA<SyncStatistics>()
+                .having((s) => s.totalSyncs, 'totalSyncs', 0)
+                .having((s) => s.failedSyncs, 'failedSyncs', 0),
+            // After one failed sync
+            isA<SyncStatistics>()
+                .having((s) => s.totalSyncs, 'totalSyncs', 1)
+                .having((s) => s.successfulSyncs, 'successfulSyncs', 0)
+                .having((s) => s.failedSyncs, 'failedSyncs', 1),
+          ]),
+        );
+
+        // The sync method should complete, not throw, but return a result
+        // indicating failure.
+        final result = await manager.sync(userId);
+        expect(result.isSuccess, isFalse);
+        expect(result.failedCount, 1);
+        expect(result.pendingOperations, hasLength(1));
+      });
+
+      test('emits updated stats after a sync with conflicts', () async {
+        // Arrange
+        final remoteItem = TestEntity.create('e1', userId, 'Remote')
+            .copyWith(version: 2, modifiedAt: DateTime.now());
+        final localItem = TestEntity.create('e1', userId, 'Local')
+            .copyWith(version: 1, modifiedAt: DateTime.now());
+
+        when(() => localAdapter.getPendingOperations(userId))
+            .thenAnswer((_) async => []);
+        when(() => remoteAdapter.fetchAll(userId, scope: any(named: 'scope')))
+            .thenAnswer((_) async => [remoteItem]);
+        when(() => localAdapter.getByIds([remoteItem.id], userId))
+            .thenAnswer((_) async => {remoteItem.id: localItem});
+        when(() => localAdapter.push(any(), any())).thenAnswer((_) async {});
+        when(() => localAdapter.getAll(userId: any(named: 'userId')))
+            .thenAnswer((_) async => []);
+        when(() => localAdapter.updateSyncMetadata(any(), any()))
+            .thenAnswer((_) async {});
+        when(() => remoteAdapter.updateSyncMetadata(any(), any()))
+            .thenAnswer((_) async {});
+
+        // Act & Assert
+        expect(
+          manager.watchSyncStatistics(),
+          emitsInOrder([
+            // Initial state
+            isA<SyncStatistics>()
+                .having((s) => s.conflictsDetected, 'conflictsDetected', 0),
+            // After one sync with a conflict
+            isA<SyncStatistics>()
+                .having((s) => s.totalSyncs, 'totalSyncs', 1)
+                .having((s) => s.successfulSyncs, 'successfulSyncs', 1)
+                .having((s) => s.conflictsDetected, 'conflictsDetected', 1)
+                .having(
+                  (s) => s.conflictsAutoResolved,
+                  'conflictsAutoResolved',
+                  1,
+                ),
+          ]),
+        );
+
+        await manager.sync(userId);
+      });
+
+      test('does not emit stats for other managers', () async {
+        // Arrange
+        final otherManager = SynqManager<TestEntity>(
+          localAdapter: localAdapter,
+          remoteAdapter: remoteAdapter,
+          connectivity: connectivityChecker,
+          synqConfig: const SynqConfig(),
+        );
+        await otherManager.initialize();
+
+        final stats = <SyncStatistics>[];
+        otherManager.watchSyncStatistics().listen(stats.add);
+
+        // Act
+        await manager.sync(userId);
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+
+        // Assert
+        expect(stats.length, 1); // Only the initial event
+        expect(stats.first.totalSyncs, 0);
+      });
+    });
+
+    group('Event Streams', () {
+      group('onDataChange', () {
+        test('emits DataChangeEvent on push (create)', () async {
+          // Arrange
+          final entity = TestEntity.create('e1', userId, 'New Item');
+          when(() => localAdapter.getById(entity.id, userId))
+              .thenAnswer((_) async => null);
+          when(() => localAdapter.push(any(), any())).thenAnswer((_) async {});
+          when(() => localAdapter.addPendingOperation(any(), any()))
+              .thenAnswer((_) async {});
+
+          // Act & Assert
+          expect(
+            manager.onDataChange,
+            emits(
+              isA<DataChangeEvent<TestEntity>>()
+                  .having((e) => e.changeType, 'changeType', ChangeType.created)
+                  .having((e) => e.data.id, 'data.id', entity.id)
+                  .having((e) => e.source, 'source', DataSource.local),
+            ),
+          );
+
+          await manager.push(entity, userId);
+        });
+
+        test('emits DataChangeEvent on push (update)', () async {
+          // Arrange
+          final existingEntity = TestEntity.create('e1', userId, 'Old Item');
+          final updatedEntity = existingEntity.copyWith(name: 'Updated Item');
+          when(() => localAdapter.getById(existingEntity.id, userId))
+              .thenAnswer((_) async => existingEntity);
+          when(() => localAdapter.patch(any(), any(), any()))
+              .thenAnswer((_) async => updatedEntity);
+          when(() => localAdapter.addPendingOperation(any(), any()))
+              .thenAnswer((_) async {});
+
+          // Act & Assert
+          expect(
+            manager.onDataChange,
+            emits(
+              isA<DataChangeEvent<TestEntity>>()
+                  .having(
+                    (e) => e.changeType,
+                    'changeType',
+                    ChangeType.updated,
+                  )
+                  .having((e) => e.data.id, 'data.id', updatedEntity.id)
+                  .having((e) => e.source, 'source', DataSource.local),
+            ),
+          );
+
+          await manager.push(updatedEntity, userId);
+        });
+
+        test('emits DataChangeEvent on delete', () async {
+          // Arrange
+          final entity = TestEntity.create('e1', userId, 'To be deleted');
+          when(() => localAdapter.getById(entity.id, userId))
+              .thenAnswer((_) async => entity);
+          when(() => localAdapter.delete(entity.id, userId))
+              .thenAnswer((_) async => true);
+          when(() => localAdapter.addPendingOperation(any(), any()))
+              .thenAnswer((_) async {});
+
+          // Act & Assert
+          expect(
+            manager.onDataChange,
+            emits(
+              isA<DataChangeEvent<TestEntity>>()
+                  .having(
+                    (e) => e.changeType,
+                    'changeType',
+                    ChangeType.deleted,
+                  )
+                  .having((e) => e.data.id, 'data.id', entity.id),
+            ),
+          );
+
+          await manager.delete(entity.id, userId);
+        });
+      });
+
+      group('onSyncStarted / onSyncCompleted', () {
+        test('emits start and completed events for a successful sync',
+            () async {
+          // Arrange
+          when(() => localAdapter.getPendingOperations(userId))
+              .thenAnswer((_) async => []);
+          when(() => localAdapter.getAll(userId: any(named: 'userId')))
+              .thenAnswer((_) async => []);
+          when(() => localAdapter.getByIds(any(), any()))
+              .thenAnswer((_) async => {});
+          when(() => localAdapter.updateSyncMetadata(any(), any()))
+              .thenAnswer((_) async {});
+          when(() => remoteAdapter.updateSyncMetadata(any(), any()))
+              .thenAnswer((_) async {});
+
+          // Act & Assert
+          final startedFuture = manager.onSyncStarted.first;
+          final completedFuture = manager.onSyncCompleted.first;
+
+          await manager.sync(userId);
+
+          final startedEvent = await startedFuture;
+          final completedEvent = await completedFuture;
+
+          expect(startedEvent.userId, userId);
+          expect(completedEvent.userId, userId);
+          expect(completedEvent.result.isSuccess, isTrue);
+        });
+      });
+
+      group('onConflict', () {
+        test('emits ConflictDetectedEvent when a conflict occurs', () async {
+          // Arrange
+          final remoteItem = TestEntity.create('e1', userId, 'Remote')
+              .copyWith(version: 2, modifiedAt: DateTime.now());
+          final localItem = TestEntity.create('e1', userId, 'Local')
+              .copyWith(version: 1, modifiedAt: DateTime.now());
+
+          when(() => localAdapter.getPendingOperations(userId))
+              .thenAnswer((_) async => []);
+          when(() => remoteAdapter.fetchAll(userId, scope: any(named: 'scope')))
+              .thenAnswer((_) async => [remoteItem]);
+          when(() => localAdapter.getByIds([remoteItem.id], userId))
+              .thenAnswer((_) async => {remoteItem.id: localItem});
+          when(() => localAdapter.push(any(), any())).thenAnswer((_) async {});
+          when(() => localAdapter.getAll(userId: any(named: 'userId')))
+              .thenAnswer((_) async => []);
+          when(() => localAdapter.updateSyncMetadata(any(), any()))
+              .thenAnswer((_) async {});
+          when(() => remoteAdapter.updateSyncMetadata(any(), any()))
+              .thenAnswer((_) async {});
+
+          // Act & Assert
+          expect(
+            manager.onConflict,
+            emits(
+              isA<ConflictDetectedEvent<TestEntity>>()
+                  .having((e) => e.context.entityId, 'entityId', 'e1')
+                  .having(
+                    (e) => e.context.type,
+                    'type',
+                    ConflictType.bothModified,
+                  ),
+            ),
+          );
+
+          await manager.sync(userId);
+        });
+      });
+
+      group('onUserSwitched', () {
+        test('emits UserSwitchedEvent on successful user switch', () async {
+          // Arrange
+          const newUserId = 'new-user';
+          when(() => localAdapter.getPendingOperations(any()))
+              .thenAnswer((_) async => []);
+
+          // Act & Assert
+          expect(
+            manager.onUserSwitched,
+            emits(
+              isA<UserSwitchedEvent<TestEntity>>()
+                  .having((e) => e.previousUserId, 'previousUserId', userId)
+                  .having((e) => e.newUserId, 'newUserId', newUserId),
+            ),
+          );
+
+          await manager.switchUser(
+            oldUserId: userId,
+            newUserId: newUserId,
+            strategy: UserSwitchStrategy.keepLocal,
+          );
+        });
+      });
+
+      group('onError', () {
+        test('emits SyncErrorEvent on initialization failure', () async {
+          // This requires creating a new manager instance that will fail.
+          final failingLocalAdapter = MockLocalAdapter<TestEntity>();
+          when(failingLocalAdapter.initialize)
+              .thenThrow(Exception('DB connection failed'));
+          when(() => failingLocalAdapter.name).thenReturn('FailingAdapter');
+
+          final errorManager = SynqManager<TestEntity>(
+            localAdapter: failingLocalAdapter,
+            remoteAdapter: remoteAdapter,
+          );
+
+          expect(
+            errorManager.onError,
+            emits(isA<SyncErrorEvent>()
+                .having((e) => e.error, 'error', contains('Initialization')),),
+          );
+
+          await expectLater(
+            errorManager.initialize(),
+            throwsA(isA<Exception>()),
+          );
+        });
       });
     });
   });

@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:synq_manager/src/models/syncable_entity.dart';
+import 'package:synq_manager/synq_manager.dart';
 
 /// Base class for all synchronization-related events.
 @immutable
@@ -23,7 +23,7 @@ class SyncStartedEvent<T extends SyncableEntity> extends SyncEvent<T> {
   /// Creates a sync started event.
   SyncStartedEvent({
     required super.userId,
-    required this.pendingOperations,
+    this.pendingOperations = 0,
     super.timestamp,
   });
 
@@ -64,20 +64,16 @@ class SyncCompletedEvent<T extends SyncableEntity> extends SyncEvent<T> {
   /// Creates a sync completed event.
   SyncCompletedEvent({
     required super.userId,
-    required this.synced,
-    required this.failed,
+    required this.result,
     super.timestamp,
   });
 
-  /// The number of operations that were successfully synced.
-  final int synced;
-
-  /// The number of operations that failed to sync.
-  final int failed;
+  /// The result of the completed synchronization cycle.
+  final SyncResult result;
 
   @override
   String toString() =>
-      '${super.toString()}: SyncCompletedEvent(synced: $synced, failed: $failed)';
+      '${super.toString()}: SyncCompletedEvent(result: $result)';
 }
 
 /// Event fired when an error occurs during synchronization.

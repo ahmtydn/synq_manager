@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart';
+
 /// Metadata describing the synchronization state for a specific user.
+@immutable
 class SyncMetadata {
   /// Creates sync metadata.
   const SyncMetadata({
@@ -67,4 +70,33 @@ class SyncMetadata {
         if (deviceId != null) 'deviceId': deviceId,
         if (customMetadata != null) 'customMetadata': customMetadata,
       };
+
+  @override
+  String toString() {
+    return 'SyncMetadata(userId: $userId, lastSyncTime: $lastSyncTime, dataHash: $dataHash, itemCount: $itemCount, deviceId: $deviceId, customMetadata: $customMetadata)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+
+    return other is SyncMetadata &&
+        other.userId == userId &&
+        other.lastSyncTime == lastSyncTime &&
+        other.dataHash == dataHash &&
+        other.itemCount == itemCount &&
+        other.deviceId == deviceId &&
+        mapEquals(other.customMetadata, customMetadata);
+  }
+
+  @override
+  int get hashCode {
+    return Object.hash(
+      userId,
+      lastSyncTime,
+      dataHash,
+      itemCount,
+      deviceId,
+    );
+  }
 }
