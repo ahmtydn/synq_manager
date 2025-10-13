@@ -47,7 +47,7 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   }
 
   @override
-  Future<void> save(T item, String userId) async {
+  Future<void> push(T item, String userId) async {
     _storage.putIfAbsent(userId, () => {});
     _storage[userId]![item.id] = item;
     _changeController.add(
@@ -59,6 +59,29 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
         data: item,
       ),
     );
+  }
+
+  @override
+  Future<T> patch(String id, String userId, Map<String, dynamic> delta) async {
+    final existing = _storage[userId]?[id];
+    if (existing == null) {
+      throw Exception('Entity with id $id not found for user $userId.');
+    }
+
+    final json = existing.toMap()..addAll(delta);
+    final patchedItem = fromJson(json);
+    _storage.putIfAbsent(userId, () => {})[id] = patchedItem;
+
+    _changeController.add(
+      ChangeDetail(
+        entityId: id,
+        userId: userId,
+        type: SyncOperationType.update,
+        timestamp: DateTime.now(),
+        data: patchedItem,
+      ),
+    );
+    return patchedItem;
   }
 
   @override

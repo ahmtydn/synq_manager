@@ -98,7 +98,7 @@ void main() {
       // General stubs for adapters
       when(() => localAdapter.initialize()).thenAnswer((_) async {});
       when(() => localAdapter.dispose()).thenAnswer((_) async {});
-      when(() => localAdapter.save(any(), any())).thenAnswer((_) async {});
+      when(() => localAdapter.push(any(), any())).thenAnswer((_) async {});
       when(() => localAdapter.getByIds(any(), any()))
           .thenAnswer((_) async => {});
       when(() => localAdapter.getAll(userId: any(named: 'userId')))
@@ -181,10 +181,10 @@ void main() {
       await manager.dispose();
     });
 
-    test('transformBeforeSave is called on save()', () async {
+    test('transformBeforeSave is called on push()', () async {
       when(() => localAdapter.getById(any(), any()))
           .thenAnswer((_) async => null);
-      await manager.save(entity, userId);
+      await manager.push(entity, userId);
 
       verify(() => middleware.transformBeforeSave(entity)).called(1);
     });
@@ -226,7 +226,7 @@ void main() {
         (inv) async => inv.positionalArguments.first as TestEntity,
       );
       // 1. Save an item to create a pending operation
-      await manager.save(entity, userId);
+      await manager.push(entity, userId);
 
       // 2. Run sync
       await manager.sync(userId);
@@ -256,7 +256,7 @@ void main() {
       when(() => localAdapter.getById(any(), any()))
           .thenAnswer((_) async => null);
       // 1. Save an item to create a pending operation
-      await manager.save(entity, userId);
+      await manager.push(entity, userId);
 
       // 2. Make the remote push fail
       when(() => remoteAdapter.push(any(), any())).thenThrow(
@@ -294,7 +294,7 @@ void main() {
       when(() => localAdapter.getByIds([remote.id], userId))
           .thenAnswer((_) async => {remote.id: local});
       // Stub the save call that happens inside conflict resolution
-      when(() => localAdapter.save(remote, userId)).thenAnswer((_) async {});
+      when(() => localAdapter.push(remote, userId)).thenAnswer((_) async {});
 
       // 2. Run sync
       await manager.sync(userId);
@@ -312,7 +312,7 @@ void main() {
       ).called(1);
     });
 
-    test('Middleware can transform data on save', () async {
+    test('Middleware can transform data on push', () async {
       // Arrange: Middleware adds a prefix to the name
       when(() => localAdapter.getById(any(), any()))
           .thenAnswer((_) async => null);
@@ -331,11 +331,11 @@ void main() {
       });
 
       // Act
-      await manager.save(original, userId);
+      await manager.push(original, userId);
 
       // Assert: Verify that the transformed item was passed to the adapter
       final captured =
-          verify(() => localAdapter.save(captureAny(), userId)).captured;
+          verify(() => localAdapter.push(captureAny(), userId)).captured;
       expect(captured.single, isA<TestEntity>());
       expect((captured.single as TestEntity).name, 'Transformed: Original');
     });

@@ -47,7 +47,7 @@ void main() {
 
     test('switches users correctly with keepLocal strategy', () async {
       final user1Entity = TestEntity.create('entity1', 'user1', 'User1 Item');
-      await manager.save(user1Entity, 'user1');
+      await manager.push(user1Entity, 'user1');
 
       final switchResult = await manager.switchUser(
         oldUserId: 'user1',
@@ -59,7 +59,7 @@ void main() {
       expect(switchResult.newUserId, 'user2');
 
       final user2Entity = TestEntity.create('entity2', 'user2', 'User2 Item');
-      await manager.save(user2Entity, 'user2');
+      await manager.push(user2Entity, 'user2');
 
       final user1Items = await manager.getAll(userId: 'user1');
       final user2Items = await manager.getAll(userId: 'user2');
@@ -89,7 +89,7 @@ void main() {
     test('switchUser with syncThenSwitch syncs old user data', () async {
       final user1Entity =
           TestEntity.create('entity1', 'user1', 'User1 Item to Sync');
-      await manager.save(user1Entity, 'user1');
+      await manager.push(user1Entity, 'user1');
       expect(await manager.getPendingCount('user1'), 1);
 
       final switchResult = await manager.switchUser(
@@ -107,7 +107,7 @@ void main() {
     test('switchUser with clearAndFetch clears new user data', () async {
       final localUser2Entity =
           TestEntity.create('local-entity', 'user2', 'Local User2 Item');
-      await manager.save(localUser2Entity, 'user2');
+      await manager.push(localUser2Entity, 'user2');
       expect(await manager.getAll(userId: 'user2'), hasLength(1));
 
       final switchResult = await manager.switchUser(
@@ -125,7 +125,7 @@ void main() {
         'switchUser with promptIfUnsyncedData fails if data is unsynced and calls observer',
         () async {
       final user1Entity = TestEntity.create('entity1', 'user1', 'Unsynced');
-      await manager.save(user1Entity, 'user1');
+      await manager.push(user1Entity, 'user1');
 
       final switchResult = await manager.switchUser(
         oldUserId: 'user1',
@@ -156,7 +156,7 @@ void main() {
     test('onUserSwitchEnd is called on failure', () async {
       // Arrange for failure
       final entity = TestEntity.create('e1', 'user1', 'unsynced');
-      await manager.save(entity, 'user1');
+      await manager.push(entity, 'user1');
 
       // Act
       await manager.switchUser(

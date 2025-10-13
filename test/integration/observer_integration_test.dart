@@ -76,14 +76,14 @@ void main() {
       await manager.dispose();
     });
 
-    test('onSaveStart and onSaveEnd are called on save()', () async {
+    test('onSaveStart and onSaveEnd are called on push()', () async {
       final entity = TestEntity.create('obs-e1', 'user1', 'Observer Test');
-      await manager.save(entity, 'user1');
+      await manager.push(entity, 'user1');
 
       verify(
         () => mockObserver.onSaveStart(entity, 'user1', DataSource.local),
       ).called(1);
-      verify(() => mockObserver.onSaveEnd(entity, 'user1', DataSource.local))
+      verify(() => mockObserver.onPushEnd(entity, 'user1', DataSource.local))
           .called(1);
     });
 
@@ -113,7 +113,7 @@ void main() {
         'onOperationStart and onOperationSuccess are called for successful sync op',
         () async {
       final entity = TestEntity.create('op-e1', 'user1', 'Op Success');
-      await manager.save(entity, 'user1');
+      await manager.push(entity, 'user1');
 
       await manager.sync('user1');
 
@@ -138,7 +138,7 @@ void main() {
 
     test('onOperationFailure is called for a failed sync op', () async {
       final entity = TestEntity.create('op-e2', 'user1', 'Op Failure');
-      await manager.save(entity, 'user1');
+      await manager.push(entity, 'user1');
       remoteAdapter.setFailedIds(['op-e2']); // Make remote push fail
 
       await manager.sync('user1');

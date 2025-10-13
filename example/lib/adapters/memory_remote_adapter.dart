@@ -155,4 +155,63 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
 
   @override
   Stream<ChangeDetail<T>>? get changeStream => _changeController.stream;
+
+  @override
+  Future<void> dispose() async {
+    await _changeController.close();
+  }
+
+  @override
+  Stream<List<T>>? watchAll(String userId, {SyncScope? scope}) {
+    // Initial data snapshot
+    final initialDataStream = Stream.fromFuture(fetchAll(userId, scope: scope));
+
+    // Stream of subsequent updates
+    final updateStream = changeStream!
+        .where((event) => event.userId == userId)
+        .asyncMap((_) => fetchAll(userId, scope: scope));
+
+    // Combine initial data with updates
+    return Rx.concat([initialDataStream, updateStream]);
+  }
+
+  @override
+  Stream<T?>? watchById(String id, String userId) {
+    // Initial data snapshot
+    final initialDataStream = Stream.fromFuture(fetchById(id, userId));
+
+    // Stream of subsequent updates for this specific item
+    final updateStream = changeStream!
+        .where((event) => event.userId == userId && event.entityId == id)
+        .asyncMap((_) => fetchById(id, userId));
+
+    // Combine initial data with updates
+    return Rx.concat([initialDataStream, updateStream]);
+  }
+
+  @override
+  Stream<List<T>>? watchQuery(SynqQuery query, String userId) {
+    // Helper to apply query logic on the remote data
+    Future<List<T>> getFiltered() async {
+      var items = await fetchAll(userId);
+      // Simple mock implementation for a 'completed' filter
+      if (query.filters.containsKey('completed')) {
+        items = items.where((item) {
+          final json = item.toMap();
+          return json['completed'] == query.filters['completed'];
+        }).toList();
+      }
+      return items;
+    }
+
+    // Initial data snapshot
+    final initialDataStream = Stream.fromFuture(getFiltered());
+
+    // Stream of subsequent updates
+    final updateStream = changeStream!
+        .where((event) => event.userId == userId)
+        .asyncMap((_) => getFiltered());
+
+    return Rx.concat([initialDataStream, updateStream]);
+  }
 }

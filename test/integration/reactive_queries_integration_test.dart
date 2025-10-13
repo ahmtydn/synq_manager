@@ -53,8 +53,8 @@ void main() {
         }
       });
 
-      await manager.save(entity1, 'user1');
-      await manager.save(entity2, 'user1');
+      await manager.push(entity1, 'user1');
+      await manager.push(entity2, 'user1');
       await manager.delete(entity1.id, 'user1');
 
       final allEvents = await completer.future;
@@ -85,8 +85,8 @@ void main() {
         }
       });
 
-      await manager.save(entity, 'user1');
-      await manager.save(updatedEntity, 'user1');
+      await manager.push(entity, 'user1');
+      await manager.push(updatedEntity, 'user1');
       await manager.delete(entity.id, 'user1');
 
       final allEvents = await completer.future;
@@ -118,9 +118,9 @@ void main() {
         }
       });
 
-      await manager.save(entities[0], 'user1');
-      await manager.save(entities[1], 'user1');
-      await manager.save(entities[2], 'user1');
+      await manager.push(entities[0], 'user1');
+      await manager.push(entities[1], 'user1');
+      await manager.push(entities[2], 'user1');
       await manager.delete(entities[0].id, 'user1');
 
       final allEvents = await completer.future;
@@ -155,9 +155,9 @@ void main() {
         }
       });
 
-      await manager.save(pendingEntity1, 'user1');
-      await manager.save(completedEntity, 'user1');
-      await manager.save(pendingEntity1.copyWith(completed: true), 'user1');
+      await manager.push(pendingEntity1, 'user1');
+      await manager.push(completedEntity, 'user1');
+      await manager.push(pendingEntity1.copyWith(completed: true), 'user1');
 
       final allEvents = await completer.future;
 
@@ -182,7 +182,7 @@ void main() {
         ]),
       );
 
-      await manager.save(user1Entity, 'user1');
+      await manager.push(user1Entity, 'user1');
 
       await manager.switchUser(
         oldUserId: 'user1',
@@ -196,7 +196,7 @@ void main() {
         user2Stream,
         emitsInOrder([isEmpty, (List<TestEntity> list) => list.length == 1]),
       );
-      await manager.save(user2Entity, 'user2');
+      await manager.push(user2Entity, 'user2');
     });
   });
 }

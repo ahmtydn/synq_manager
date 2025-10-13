@@ -305,7 +305,7 @@ class SyncEngine<T extends SyncableEntity> {
 
       if (context == null) {
         // No conflict, just save the remote item
-        await localAdapter.save(remoteItem, userId);
+        await localAdapter.push(remoteItem, userId);
         continue;
       }
 
@@ -332,12 +332,12 @@ class SyncEngine<T extends SyncableEntity> {
           // Do nothing, keep local version
           break;
         case ResolutionStrategy.useRemote:
-          await localAdapter.save(remoteItem, userId);
+          await localAdapter.push(remoteItem, userId);
         case ResolutionStrategy.merge:
           if (resolution.resolvedData == null) {
             throw StateError('Merge resolution must provide a merged item.');
           }
-          await localAdapter.save(resolution.resolvedData!, userId);
+          await localAdapter.push(resolution.resolvedData!, userId);
         case ResolutionStrategy.abort:
           logger.warn('Conflict resolution aborted for ${context.entityId}');
         case ResolutionStrategy.askUser:

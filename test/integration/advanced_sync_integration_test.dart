@@ -48,7 +48,7 @@ void main() {
 
     test('pauses and resumes sync', () async {
       final entity = TestEntity.create('entity1', 'user1', 'Test Item');
-      await manager.save(entity, 'user1');
+      await manager.push(entity, 'user1');
 
       unawaited(manager.pauseSync('user1'));
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -65,7 +65,7 @@ void main() {
     test('cancels sync operation', () async {
       for (var i = 0; i < 10; i++) {
         final entity = TestEntity.create('entity$i', 'user1', 'Test Item $i');
-        await manager.save(entity, 'user1');
+        await manager.push(entity, 'user1');
       }
 
       final syncFuture = manager.sync('user1');
@@ -89,7 +89,7 @@ void main() {
 
       final localOnlyEntity =
           TestEntity.create('local-only', 'user1', 'Local Only Item');
-      await manager.save(localOnlyEntity, 'user1');
+      await manager.push(localOnlyEntity, 'user1');
 
       final thirtyDaysAgo =
           DateTime.now().subtract(const Duration(days: 30)).toIso8601String();
@@ -125,8 +125,8 @@ void main() {
       final successEntity =
           TestEntity.create('success1', 'user1', 'Will Succeed');
       final failEntity = TestEntity.create('fail1', 'user1', 'Will Fail');
-      await manager.save(successEntity, 'user1');
-      await manager.save(failEntity, 'user1');
+      await manager.push(successEntity, 'user1');
+      await manager.push(failEntity, 'user1');
 
       remoteAdapter.setFailedIds(['fail1']);
 

@@ -28,7 +28,9 @@ abstract class LocalAdapter<T extends SyncableEntity> {
 
   /// Watch all items belonging to the given user.
   ///
-  /// Returns a stream that emits the full list of items whenever data changes.
+  /// Returns a stream that emits the full list of items from the local cache
+  /// whenever the underlying data changes. This is the foundation for building
+  /// reactive UIs that are offline-first.
   /// Return null if the adapter doesn't support reactive queries.
   Stream<List<T>>? watchAll({String? userId}) {
     return null;
@@ -36,7 +38,8 @@ abstract class LocalAdapter<T extends SyncableEntity> {
 
   /// Watch a single item by its identifier for the given user.
   ///
-  /// Returns a stream that emits the item whenever it changes.
+  /// Returns a stream that emits the item from the local cache whenever it
+  /// changes.
   /// Emits null if the item is deleted.
   /// Return null if the adapter doesn't support reactive queries.
   Stream<T?>? watchById(String id, String userId) {
@@ -45,7 +48,8 @@ abstract class LocalAdapter<T extends SyncableEntity> {
 
   /// Watch a paginated list of items.
   ///
-  /// Returns a stream that emits a paginated result whenever data changes.
+  /// Returns a stream that emits a paginated result from the local cache
+  /// whenever the underlying data changes.
   /// Return null if the adapter doesn't support reactive queries.
   Stream<PaginatedResult<T>>? watchAllPaginated(
     PaginationConfig config, {
@@ -56,7 +60,8 @@ abstract class LocalAdapter<T extends SyncableEntity> {
 
   /// Watch a subset of items matching a query.
   ///
-  /// Returns a stream that emits the list of items whenever data changes.
+  /// Returns a stream that emits a filtered list of items from the local cache
+  /// whenever the underlying data changes.
   /// Return null if the adapter doesn't support reactive queries.
   Stream<List<T>>? watchQuery(SynqQuery query, {String? userId}) {
     return null;
@@ -65,13 +70,16 @@ abstract class LocalAdapter<T extends SyncableEntity> {
   /// Returns a stream that emits the total number of entities, optionally
   /// matching a query.
   ///
-  /// This can be more efficient than `watchAll().map((list) => list.length)`.
+  /// This is an efficient way to reactively display counts in the UI without
+  /// fetching and processing the full list of items.
   /// Return null if the adapter does not support this feature.
   Stream<int>? watchCount({SynqQuery? query, String? userId}) {
     return null;
   }
 
   /// Returns a stream that emits the first entity matching a query.
+  ///
+  /// Useful for reactively displaying a single item from a filtered set.
   /// Emits `null` if no matching entities are found.
   Stream<T?>? watchFirst({SynqQuery? query, String? userId}) {
     return null;
@@ -92,8 +100,15 @@ abstract class LocalAdapter<T extends SyncableEntity> {
     String? userId,
   });
 
-  /// Persist or update an entity locally.
-  Future<void> save(T item, String userId);
+  /// Persist or update a full entity locally.
+  Future<void> push(T item, String userId);
+
+  /// Apply a partial update (a "patch") to an existing entity locally.
+  ///
+  /// The [delta] map should contain only the fields that have changed.
+  /// Throws an exception if the entity does not exist.
+  /// Returns the full, updated entity from local storage after the patch is applied.
+  Future<T> patch(String id, String userId, Map<String, dynamic> delta);
 
   /// Remove an entity locally. Implementations
   /// should return `true` if an item was deleted, `false` otherwise.

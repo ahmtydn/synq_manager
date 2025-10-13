@@ -74,16 +74,16 @@ void main() {
       when(() => remoteAdapter.push(any(), any())).thenAnswer(
         (inv) async => inv.positionalArguments.first as TestEntity,
       );
-      await manager.save(initialEntity, 'user1');
+      await manager.push(initialEntity, 'user1');
       await manager.sync('user1');
 
       // Verify it was pushed fully the first time.
       verify(() => remoteAdapter.push(any(), any())).called(1);
       expect(await manager.getPendingCount('user1'), 0);
 
-      // 2. ACT: Update only one field of the entity and save it.
+      // 2. ACT: Update only one field of the entity and push it.
       final updatedEntity = initialEntity.copyWith(name: 'Updated Name');
-      await manager.save(updatedEntity, 'user1');
+      await manager.push(updatedEntity, 'user1');
 
       // Sync again.
       await manager.sync('user1');

@@ -56,8 +56,8 @@ void main() {
         version: 1,
       );
 
-      await setupManager.save(user1Entity, 'user1');
-      await setupManager.save(user2Entity, 'user2');
+      await setupManager.push(user1Entity, 'user1');
+      await setupManager.push(user2Entity, 'user2');
       await setupManager.dispose();
 
       // Now create manager with autoStartSync
@@ -106,7 +106,7 @@ void main() {
         createdAt: DateTime.now(),
         version: 1,
       );
-      await localAdapter.save(entity, 'user1');
+      await localAdapter.push(entity, 'user1');
 
       final manager = SynqManager<TestEntity>(
         localAdapter: localAdapter,
@@ -129,7 +129,7 @@ void main() {
         createdAt: DateTime.now(),
         version: 1,
       );
-      await manager.save(newEntity, 'user1');
+      await manager.push(newEntity, 'user1');
 
       // Wait a bit
       await Future<void>.delayed(const Duration(milliseconds: 1500));
@@ -169,7 +169,7 @@ void main() {
         createdAt: DateTime.now(),
         version: 1,
       );
-      await manager.save(entity, 'user1');
+      await manager.push(entity, 'user1');
 
       // Manually start auto-sync since there was no initial data
       manager.startAutoSync('user1');
@@ -205,7 +205,7 @@ void main() {
           createdAt: DateTime.now(),
           version: 1,
         );
-        await setupManager.save(entity, 'user$i');
+        await setupManager.push(entity, 'user$i');
       }
 
       await setupManager.dispose();

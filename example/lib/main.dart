@@ -135,7 +135,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
       version: 1,
     );
 
-    await _manager.save(task, _currentUserId);
+    await _manager.push(task, _currentUserId);
   }
 
   Future<void> _toggleTask(Task task) async {
@@ -145,7 +145,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
       version: task.version + 1,
     );
 
-    await _manager.save(updated, _currentUserId);
+    await _manager.push(updated, _currentUserId);
   }
 
   Future<void> _deleteTask(Task task) async {

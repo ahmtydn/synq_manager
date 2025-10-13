@@ -261,6 +261,13 @@ await manager.save(updated, 'user123');
 final bool wasDeleted = await manager.delete('task-id', 'user123');
 if (wasDeleted) print('Task deleted successfully!');
 
+----
+-
+## 🎯 Advanced Features
+
+### 👥 User Switching
+
+
 ```
 
 ### 5️⃣ Synchronization

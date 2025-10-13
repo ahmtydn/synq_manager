@@ -302,14 +302,14 @@ class SynqManager<T extends SyncableEntity> {
     return watchCount(query: query, userId: userId).map((count) => count > 0);
   }
 
-  /// Persists an entity to local storage and queues for remote synchronization.
+  /// Persists an entity to local storage and queues it for remote synchronization.
   ///
   /// Creates a new entity if `item.id` doesn't exist, otherwise updates.
   /// Applies all registered middleware transformations pre-save.
   /// Emits [DataChangeEvent] upon successful save.
   ///
   /// Returns the transformed entity that was actually saved.
-  Future<T> save(T item, String userId) async {
+  Future<T> push(T item, String userId) async {
     _ensureInitializedAndNotDisposed();
 
     if (userId.isEmpty) {
@@ -345,7 +345,7 @@ class SynqManager<T extends SyncableEntity> {
       }
 
       _logger.debug('Saving transformed entity ${item.id} to local adapter');
-      await localAdapter.save(transformed, userId);
+      await localAdapter.push(transformed, userId);
 
       final operation = _createOperation(
         userId: userId,
@@ -365,7 +365,7 @@ class SynqManager<T extends SyncableEntity> {
 
       _logger.info('Successfully saved entity ${item.id} for user $userId');
       _notifyObservers(
-        (o) => o.onSaveEnd(transformed, userId, DataSource.local),
+        (o) => o.onPushEnd(transformed, userId, DataSource.local),
       );
       return transformed;
     } on Object catch (e, stack) {
@@ -440,16 +440,16 @@ class SynqManager<T extends SyncableEntity> {
 
   /// Persists an entity and immediately triggers a synchronization.
   ///
-  /// A convenience method that combines [save] and [sync].
+  /// A convenience method that combines [push] and [sync].
   /// Returns the [SyncResult] from the subsequent synchronization.
-  Future<SyncResult> saveAndSync(
+  Future<SyncResult> pushAndSync(
     T item,
     String userId, {
     SyncOptions<T>? options,
     SyncScope? scope,
   }) async {
     _ensureInitializedAndNotDisposed();
-    await save(item, userId);
+    await push(item, userId);
     return sync(
       userId,
       options: options,
@@ -1320,7 +1320,7 @@ class SynqManager<T extends SyncableEntity> {
           return;
         }
 
-        await save(change.data!, change.userId);
+        await push(change.data!, change.userId);
         _logger.info(
           'Applied external ${change.type.name} for entity ${change.entityId}',
         );

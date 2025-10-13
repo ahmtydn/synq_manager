@@ -85,7 +85,7 @@ void main() {
         version: 1,
       );
 
-      await manager.save(entity, 'user1');
+      await manager.push(entity, 'user1');
 
       final localItems = await localAdapter.getAll(userId: 'user1');
       expect(localItems, hasLength(1));
@@ -111,7 +111,7 @@ void main() {
         version: 1,
       );
 
-      await manager.save(entity, 'user1');
+      await manager.push(entity, 'user1');
 
       final result = await manager.sync('user1');
 
@@ -178,7 +178,7 @@ void main() {
         version: 2,
       );
 
-      await localAdapter.save(localEntity, 'user1');
+      await localAdapter.push(localEntity, 'user1');
       remoteAdapter.addRemoteItem('user1', remoteEntity);
 
       final result = await manager.sync('user1');
@@ -202,7 +202,7 @@ void main() {
         version: 1,
       );
 
-      await manager.save(entity, 'user1');
+      await manager.push(entity, 'user1');
       await manager.sync('user1');
 
       expect(await remoteAdapter.fetchAll('user1'), hasLength(1));
@@ -227,7 +227,7 @@ void main() {
         version: 1,
       );
 
-      await manager.save(entity, 'user1');
+      await manager.push(entity, 'user1');
 
       remoteAdapter.connected = false;
       connectivityChecker.connected = false;
@@ -244,7 +244,7 @@ void main() {
     test('tracks sync statistics', () async {
       final entity = TestEntity.create('entity1', 'user1', 'Test Item');
 
-      await manager.save(entity, 'user1');
+      await manager.push(entity, 'user1');
       await manager.sync('user1');
 
       final stats = await manager.getSyncStatistics('user1');
@@ -256,7 +256,7 @@ void main() {
 
     test('retrieves entity by id', () async {
       final entity = TestEntity.create('entity1', 'user1', 'Test Item');
-      await manager.save(entity, 'user1');
+      await manager.push(entity, 'user1');
 
       final retrieved = await manager.getById('entity1', 'user1');
 
@@ -273,8 +273,8 @@ void main() {
     test('getByIds fetches multiple items correctly', () async {
       final entity1 = TestEntity.create('e1', 'user1', 'Item 1');
       final entity2 = TestEntity.create('e2', 'user1', 'Item 2');
-      await localAdapter.save(entity1, 'user1');
-      await localAdapter.save(entity2, 'user1');
+      await localAdapter.push(entity1, 'user1');
+      await localAdapter.push(entity2, 'user1');
 
       final result = await localAdapter.getByIds(['e1', 'e2', 'e3'], 'user1');
 
@@ -291,7 +291,7 @@ void main() {
       // Attempt a transaction that will fail
       await expectLater(
         localAdapter.transaction(() async {
-          await localAdapter.save(entity1, 'user1');
+          await localAdapter.push(entity1, 'user1');
           // This should be present inside the transaction
           expect(await localAdapter.getById('tx1', 'user1'), isNotNull);
           throw Exception('Simulated transaction failure');

@@ -96,7 +96,7 @@ void main() {
           .thenAnswer((_) async => []);
       when(() => remoteAdapter.push(any(), any()))
           .thenAnswer((i) async => i.positionalArguments.first as TestEntity);
-      when(() => localAdapter.save(any(), any())).thenAnswer((_) async {});
+      when(() => localAdapter.push(any(), any())).thenAnswer((_) async {});
     });
 
     tearDown(() async {
@@ -145,9 +145,12 @@ void main() {
       final metadata = await futureMetadata;
       expect(metadata, isA<SyncMetadata>());
       expect(metadata.userId, 'user-1');
-      expect(metadata.itemCount, 1,
-          reason:
-              'Metadata should reflect the item count from localAdapter.getAll',);
+      expect(
+        metadata.itemCount,
+        1,
+        reason:
+            'Metadata should reflect the item count from localAdapter.getAll',
+      );
       expect(metadata.dataHash, isNotEmpty);
       expect(
         metadata.lastSyncTime

@@ -40,4 +40,39 @@ abstract class RemoteAdapter<T extends SyncableEntity> {
 
   /// Check if the remote data source is currently reachable.
   Future<bool> isConnected();
+
+  /// Watch all items directly from the remote source for a given user.
+  ///
+  /// Returns a stream that emits the full list of items from the remote source
+  /// whenever the data changes. This is for scenarios that require live data
+  /// and can accept the trade-off of network dependency.
+  /// Return null if the adapter doesn't support reactive queries.
+  Stream<List<T>>? watchAll(String userId, {SyncScope? scope}) {
+    return null;
+  }
+
+  /// Watch a single item by its identifier directly from the remote source.
+  ///
+  /// Returns a stream that emits the item from the remote source whenever it
+  /// changes. Emits null if the item is deleted.
+  /// Return null if the adapter doesn't support reactive queries.
+  Stream<T?>? watchById(String id, String userId) {
+    return null;
+  }
+
+  /// Watch a subset of items matching a query directly from the remote source.
+  ///
+  /// Returns a stream that emits a filtered list of items from the remote source
+  /// whenever the data changes.
+  /// Return null if the adapter doesn't support reactive queries.
+  Stream<List<T>>? watchQuery(SynqQuery query, String userId) {
+    return null;
+  }
+
+  /// Dispose of any resources used by the adapter, such as stream controllers
+  /// or network connections.
+  Future<void> dispose() async {
+    // Default implementation does nothing.
+    // Adapters with resources to clean up should override this.
+  }
 }
