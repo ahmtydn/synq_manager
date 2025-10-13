@@ -45,16 +45,14 @@ class SynqManager<T extends SyncableEntity> {
   /// Creates a [SynqManager] with the provided adapters
   /// and optional configurations.
   SynqManager({
-    required LocalAdapter<T> localAdapter,
-    required RemoteAdapter<T> remoteAdapter,
+    required this.localAdapter,
+    required this.remoteAdapter,
     SyncConflictResolver<T>? conflictResolver,
     SynqConfig? synqConfig,
     ConnectivityChecker? connectivity,
     SynqLogger? initialLogger,
   })  : _conflictResolver = conflictResolver ?? LastWriteWinsResolver<T>(),
         _config = synqConfig ?? SynqConfig.defaultConfig(),
-        _localAdapter = localAdapter,
-        _remoteAdapter = remoteAdapter,
         _connectivityChecker = connectivity ?? ConnectivityChecker(),
         _logger = initialLogger ??
             SynqLogger(
@@ -64,8 +62,11 @@ class SynqManager<T extends SyncableEntity> {
   }
 
   // Core dependencies - immutable after construction
-  final LocalAdapter<T> _localAdapter;
-  final RemoteAdapter<T> _remoteAdapter;
+  /// Adapter for local data storage operations.
+  final LocalAdapter<T> localAdapter;
+
+  /// Adapter for remote data source operations.
+  final RemoteAdapter<T> remoteAdapter;
   final SyncConflictResolver<T> _conflictResolver;
   final SynqConfig _config;
   final ConnectivityChecker _connectivityChecker;
@@ -190,7 +191,7 @@ class SynqManager<T extends SyncableEntity> {
     _ensureInitializedAndNotDisposed();
 
     try {
-      final items = await _localAdapter.getAll(userId: userId);
+      final items = await localAdapter.getAll(userId: userId);
       return Future.wait(items.map(_applyPostFetchTransformations));
     } on Object catch (e, stack) {
       _logger.error('Failed to get all items for user: $userId', stack);
@@ -210,7 +211,7 @@ class SynqManager<T extends SyncableEntity> {
     }
 
     try {
-      final item = await _localAdapter.getById(id, userId);
+      final item = await localAdapter.getById(id, userId);
       if (item == null) return null;
 
       return _applyPostFetchTransformations(item);
@@ -218,6 +219,31 @@ class SynqManager<T extends SyncableEntity> {
       _logger.error('Failed to get item by ID: $id for user: $userId', stack);
       rethrow;
     }
+  }
+
+  /// Returns a stream of all entities for the specified user.
+  ///
+  /// The stream emits a new list of entities whenever the underlying data changes.
+  /// Returns an empty stream if the adapter does not support watching.
+  Stream<List<T>> watchAll({String? userId}) {
+    _ensureInitializedAndNotDisposed();
+    return localAdapter.watchAll(userId: userId) ?? const Stream.empty();
+  }
+
+  /// Returns a stream for a single entity by its ID.
+  ///
+  /// The stream emits the entity when it changes, or `null` if it's deleted.
+  /// Returns an empty stream if the adapter does not support watching.
+  Stream<T?> watchById(String id, String userId) {
+    _ensureInitializedAndNotDisposed();
+
+    if (id.isEmpty) {
+      throw ArgumentError.value(id, 'id', 'Must not be empty');
+    }
+    if (userId.isEmpty) {
+      throw ArgumentError.value(userId, 'userId', 'Must not be empty');
+    }
+    return localAdapter.watchById(id, userId) ?? const Stream.empty();
   }
 
   /// Persists an entity to local storage and queues for remote synchronization.
@@ -237,11 +263,11 @@ class SynqManager<T extends SyncableEntity> {
     try {
       await _ensureUserInitialized(userId);
 
-      final existing = await _localAdapter.getById(item.id, userId);
+      final existing = await localAdapter.getById(item.id, userId);
       final isCreate = existing == null;
 
       final transformed = await _applyPreSaveTransformations(item);
-      await _localAdapter.save(transformed, userId);
+      await localAdapter.save(transformed, userId);
 
       final operation = _createOperation(
         userId: userId,
@@ -274,7 +300,7 @@ class SynqManager<T extends SyncableEntity> {
   ///
   /// No-op if entity doesn't exist locally.
   /// Emits [DataChangeEvent] with deletion type upon successful removal.
-  Future<void> delete(String id, String userId) async {
+  Future<bool> delete(String id, String userId) async {
     _ensureInitializedAndNotDisposed();
 
     if (id.isEmpty) {
@@ -287,15 +313,16 @@ class SynqManager<T extends SyncableEntity> {
     try {
       await _ensureUserInitialized(userId);
 
-      final existing = await _localAdapter.getById(id, userId);
+      final existing = await localAdapter.getById(id, userId);
       if (existing == null) {
         _logger.debug(
           'Entity $id does not exist for user $userId, skipping delete',
         );
-        return;
+        return false;
       }
 
-      await _localAdapter.delete(id, userId);
+      final deleted = await localAdapter.delete(id, userId);
+      if (!deleted) return false;
 
       final operation = _createOperation(
         userId: userId,
@@ -313,6 +340,7 @@ class SynqManager<T extends SyncableEntity> {
       );
 
       _logger.debug('Deleted entity $id for user $userId');
+      return true;
     } on Object catch (e, stack) {
       _logger.error('Failed to delete entity $id for user: $userId', stack);
       rethrow;
@@ -556,7 +584,7 @@ class SynqManager<T extends SyncableEntity> {
       await _eventController.close();
       await _statusSubject.close();
       await _queueManager.dispose();
-      await _localAdapter.dispose();
+      await localAdapter.dispose();
 
       _logger.info('SynqManager disposed successfully');
     } on Object catch (e, stack) {
@@ -571,21 +599,21 @@ class SynqManager<T extends SyncableEntity> {
     // Components that can be initialized in constructor
     _conflictDetector = ConflictDetector<T>();
     _queueManager = QueueManager<T>(
-      localAdapter: _localAdapter,
+      localAdapter: localAdapter,
       logger: _logger,
     );
   }
 
   Future<void> _initializeAdapters() async {
     _logger.debug('Initializing local adapter');
-    await _localAdapter.initialize();
+    await localAdapter.initialize();
   }
 
   void _initializeSyncComponents() {
     _logger.debug('Initializing sync engine');
     _syncEngine = SyncEngine<T>(
-      localAdapter: _localAdapter,
-      remoteAdapter: _remoteAdapter,
+      localAdapter: localAdapter,
+      remoteAdapter: remoteAdapter,
       conflictResolver: _conflictResolver,
       queueManager: _queueManager,
       conflictDetector: _conflictDetector,
@@ -621,7 +649,7 @@ class SynqManager<T extends SyncableEntity> {
   }
 
   Future<void> _subscribeToLocalChanges() async {
-    final localChangeStream = _localAdapter.changeStream();
+    final localChangeStream = localAdapter.changeStream();
     if (localChangeStream == null) {
       _logger.debug('Local adapter does not provide change stream');
       return;
@@ -639,7 +667,7 @@ class SynqManager<T extends SyncableEntity> {
   }
 
   Future<void> _subscribeToRemoteChanges() async {
-    final remoteChangeStream = _remoteAdapter.changeStream;
+    final remoteChangeStream = remoteAdapter.changeStream;
     if (remoteChangeStream == null) {
       _logger.debug('Remote adapter does not provide change stream');
       return;
@@ -790,7 +818,7 @@ class SynqManager<T extends SyncableEntity> {
 
       case UserSwitchStrategy.clearAndFetch:
         _logger.info('Clearing local data for new user: $newUserId');
-        await _localAdapter.clearUserData(newUserId);
+        await localAdapter.clearUserData(newUserId);
 
       case UserSwitchStrategy.promptIfUnsyncedData:
         if (hadUnsynced) {
@@ -941,8 +969,7 @@ class SynqManager<T extends SyncableEntity> {
   /// Checks if this change duplicates an operation already in the queue.
   Future<bool> _isDuplicateOfPendingOperation(ChangeDetail<T> change) async {
     try {
-      final pendingOps =
-          await _localAdapter.getPendingOperations(change.userId);
+      final pendingOps = await localAdapter.getPendingOperations(change.userId);
 
       for (final op in pendingOps) {
         if (!_isMatchingOperation(op, change)) {
@@ -989,7 +1016,7 @@ class SynqManager<T extends SyncableEntity> {
         return false;
       }
 
-      final existing = await _localAdapter.getById(
+      final existing = await localAdapter.getById(
         change.entityId,
         change.userId,
       );
@@ -1007,7 +1034,7 @@ class SynqManager<T extends SyncableEntity> {
   }
 
   Future<bool> _isAlreadyDeleted(String entityId, String userId) async {
-    final existing = await _localAdapter.getById(entityId, userId);
+    final existing = await localAdapter.getById(entityId, userId);
     return existing == null || existing.isDeleted;
   }
 

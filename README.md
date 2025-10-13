@@ -9,7 +9,7 @@ A powerful **offline-first data synchronization engine** for Flutter and Dart ap
 ---
 
 ## 📚 Table of Contents
-
+ud
 - [✨ Features](#-features)
 - [🚀 Quick Start](#-quick-start)
 - [📖 Core Concepts](#-core-concepts)
@@ -86,22 +86,22 @@ import 'package:synq_manager/synq_manager.dart';
 class Task implements SyncableEntity {
   @override
   final String id;
-  
+
   @override
   final String userId;
-  
+
   final String title;
   final bool completed;
-  
+
   @override
   final DateTime modifiedAt;
-  
+
   @override
   final DateTime createdAt;
-  
+
   @override
   final String version;
-  
+
   @override
   final bool isDeleted;
 
@@ -204,9 +204,18 @@ final task = Task(
 );
 await manager.save(task, 'user123');
 
-// 📖 Read
-final allTasks = await manager.getAll('user123');
+// 📖 Read (one-time fetch)
+final allTasks = await manager.getAll(userId: 'user123');
 final specificTask = await manager.getById('task-id', 'user123');
+
+// 🎧 Read (real-time stream)
+// The `onInit` stream provides an initial snapshot of all data,
+// followed by live updates. This is perfect for powering UIs.
+manager.onInit.listen((event) {
+  final tasks = event.data;
+  // Update your UI with the full list of tasks
+  print('Received initial data with ${tasks.length} tasks.');
+});
 
 // ✏️ Update
 final updated = task.copyWith(
@@ -239,15 +248,18 @@ manager.stopAutoSync(userId: 'user123');
 
 ### 6️⃣ Listen to Events
 
+Your UI can reactively update by listening to various streams.
+
 ```dart
-// 📊 Data changes
-manager.onDataChange.listen((event) {
-  print('${event.changeType}: ${event.data.title}');
+// 🚀 Get initial data and subscribe to all future changes
+manager.onInit.listen((event) {
+  print('UI updated with ${event.data.length} items.');
+  // This is the primary stream for populating and updating a list view.
 });
 
-// 📈 Sync progress
-manager.onSyncProgress.listen((event) {
-  print('Progress: ${event.completed}/${event.total}');
+// 📊 Listen to granular data changes (create, update, delete)
+manager.onDataChange.listen((event) {
+  print('${event.changeType}: ${event.data.title}');
 });
 
 // ⚠️ Conflicts
@@ -258,6 +270,11 @@ manager.onConflict.listen((event) {
 // ❌ Errors
 manager.onError.listen((event) {
   print('Error: ${event.error}');
+});
+
+// 📈 Sync progress
+manager.onSyncProgress.listen((event) {
+  print('Progress: ${event.completed}/${event.total}');
 });
 ```
 
@@ -277,7 +294,7 @@ abstract class SyncableEntity {
   DateTime get createdAt;     // Creation time
   String get version;         // Version for conflict detection
   bool get isDeleted;         // Soft delete flag
-  
+
   Map<String, dynamic> toJson();
   T copyWith({...});
 }
@@ -334,26 +351,26 @@ SynqConfig(
   // ⏱️ Auto-sync settings
   autoSyncInterval: Duration(minutes: 5),
   autoSyncOnConnect: true,
-  
+
   // 🔄 Retry behavior
   maxRetries: 3,
   retryDelay: Duration(seconds: 5),
-  
+
   // 📦 Batch settings
   batchSize: 50,
-  
+
   // ⚔️ Conflict resolution
   defaultConflictResolver: LastWriteWinsResolver<Task>(),
-  
+
   // 👥 User switching
   defaultUserSwitchStrategy: UserSwitchStrategy.syncThenSwitch,
-  
+
   // 📡 Real-time sync
   enableRealTimeSync: false,
-  
+
   // ⏰ Timeouts
   syncTimeout: Duration(minutes: 2),
-  
+
   // 📝 Logging
   enableLogging: true,
 )
@@ -594,7 +611,7 @@ class TaskMergeResolver extends SyncConflictResolver<Task> {
   }) async {
     if (localItem == null) return ConflictResolution.useRemote(remoteItem!);
     if (remoteItem == null) return ConflictResolution.useLocal(localItem);
-    
+
     // Custom merge logic
     final merged = localItem.copyWith(
       title: remoteItem.modifiedAt.isAfter(localItem.modifiedAt)
@@ -604,7 +621,7 @@ class TaskMergeResolver extends SyncConflictResolver<Task> {
       modifiedAt: DateTime.now(),
       version: 'v${int.parse(localItem.version.substring(1)) + 1}',
     );
-    
+
     return ConflictResolution.merge(merged);
   }
 
@@ -836,9 +853,9 @@ test('should sync data successfully', () async {
     localAdapter: localAdapter,
     remoteAdapter: remoteAdapter,
   );
-  
+
   await manager.initialize();
-  
+
   final task = Task(
     id: 'task-1',
     userId: 'user1',
@@ -847,11 +864,11 @@ test('should sync data successfully', () async {
     createdAt: DateTime.now(),
     version: 'v1',
   );
-  
+
   // Act
   await manager.save(task, 'user1');
   final result = await manager.sync('user1');
-  
+
   // Assert
   expect(result.syncedCount, equals(1));
   expect(result.failedCount, equals(0));

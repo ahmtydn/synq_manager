@@ -1,3 +1,5 @@
+export 'package:rxdart/rxdart.dart';
+
 export 'src/adapters/local_adapter.dart';
 export 'src/adapters/remote_adapter.dart';
 export 'src/config/synq_config.dart';

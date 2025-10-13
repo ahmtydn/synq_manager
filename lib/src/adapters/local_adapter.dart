@@ -2,6 +2,7 @@ import 'package:synq_manager/src/models/change_detail.dart';
 import 'package:synq_manager/src/models/sync_metadata.dart';
 import 'package:synq_manager/src/models/sync_operation.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
+import 'package:synq_manager/src/query/pagination.dart';
 
 /// Local storage adapter abstraction that provides access to offline data.
 abstract class LocalAdapter<T extends SyncableEntity> {
@@ -17,18 +18,52 @@ abstract class LocalAdapter<T extends SyncableEntity> {
     return null;
   }
 
+  /// Watch all items belonging to the given user.
+  ///
+  /// Returns a stream that emits the full list of items whenever data changes.
+  /// Return null if the adapter doesn't support reactive queries.
+  Stream<List<T>>? watchAll({String? userId}) {
+    return null;
+  }
+
+  /// Watch a single item by its identifier for the given user.
+  ///
+  /// Returns a stream that emits the item whenever it changes.
+  /// Emits null if the item is deleted.
+  /// Return null if the adapter doesn't support reactive queries.
+  Stream<T?>? watchById(String id, String userId) {
+    return null;
+  }
+
+  /// Watch a paginated list of items.
+  ///
+  /// Returns a stream that emits a paginated result whenever data changes.
+  /// Return null if the adapter doesn't support reactive queries.
+  Stream<PaginatedResult<T>>? watchAllPaginated(
+    PaginationConfig config, {
+    String? userId,
+  }) {
+    return null;
+  }
+
   /// Fetch all items belonging to the given user.
   Future<List<T>> getAll({String? userId});
 
   /// Fetch a single item by its identifier for the given user.
   Future<T?> getById(String id, String userId);
 
+  /// Fetch a paginated list of items.
+  Future<PaginatedResult<T>> getAllPaginated(
+    PaginationConfig config, {
+    String? userId,
+  });
+
   /// Persist or update an entity locally.
   Future<void> save(T item, String userId);
 
   /// Remove an entity locally. Implementations
-  /// may perform soft deletes if needed.
-  Future<void> delete(String id, String userId);
+  /// should return `true` if an item was deleted, `false` otherwise.
+  Future<bool> delete(String id, String userId);
 
   /// Return the list of pending sync operations awaiting remote reconciliation.
   Future<List<SyncOperation<T>>> getPendingOperations(String userId);

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:synq_manager/synq_manager.dart';
 
 /// In-memory implementation of RemoteAdapter for demonstration purposes.
@@ -7,6 +9,7 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
   MemoryRemoteAdapter({required this.fromJson});
   final Map<String, Map<String, T>> _remoteStorage = {};
   final Map<String, SyncMetadata> _remoteMetadata = {};
+  final _changeController = StreamController<ChangeDetail<T>>.broadcast();
   final T Function(Map<String, dynamic>) fromJson;
   final bool _isConnected = true;
 
@@ -46,6 +49,15 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
     _remoteStorage.putIfAbsent(userId, () => {});
     _remoteStorage[userId]![item.id] = item;
 
+    _changeController.add(
+      ChangeDetail(
+        entityId: item.id,
+        userId: userId,
+        type: SyncOperationType.update,
+        timestamp: DateTime.now(),
+        data: item,
+      ),
+    );
     return item;
   }
 
@@ -58,7 +70,17 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
     // Simulate network delay
     await Future<void>.delayed(const Duration(milliseconds: 100));
 
-    _remoteStorage[userId]?.remove(id);
+    final item = _remoteStorage[userId]?.remove(id);
+    if (item != null) {
+      _changeController.add(
+        ChangeDetail(
+          entityId: id,
+          userId: userId,
+          type: SyncOperationType.delete,
+          timestamp: DateTime.now(),
+        ),
+      );
+    }
   }
 
   @override
@@ -106,5 +128,5 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
   }
 
   @override
-  Stream<ChangeDetail<T>>? get changeStream => throw UnimplementedError();
+  Stream<ChangeDetail<T>>? get changeStream => _changeController.stream;
 }

@@ -3,16 +3,25 @@ import 'package:synq_manager/src/config/synq_config.dart';
 import 'package:synq_manager/src/core/synq_manager.dart';
 
 import '../mocks/mock_adapters.dart';
+import '../mocks/mock_connectivity_checker.dart';
 import '../mocks/test_entity.dart';
 
 void main() {
   group('Auto-Start Sync', () {
     late MockLocalAdapter<TestEntity> localAdapter;
     late MockRemoteAdapter<TestEntity> remoteAdapter;
+    late MockConnectivityChecker connectivityChecker;
 
     setUp(() {
       localAdapter = MockLocalAdapter<TestEntity>();
       remoteAdapter = MockRemoteAdapter<TestEntity>();
+      connectivityChecker = MockConnectivityChecker();
+    });
+
+    tearDown(() async {
+      await localAdapter.dispose();
+      await remoteAdapter.dispose();
+      await connectivityChecker.dispose();
     });
 
     test('auto-starts sync for all users with data on initialization',
@@ -21,6 +30,7 @@ void main() {
       final setupManager = SynqManager<TestEntity>(
         localAdapter: localAdapter,
         remoteAdapter: remoteAdapter,
+        connectivity: connectivityChecker,
         synqConfig: const SynqConfig(),
       );
 
@@ -54,6 +64,7 @@ void main() {
       final manager = SynqManager<TestEntity>(
         localAdapter: localAdapter,
         remoteAdapter: remoteAdapter,
+        connectivity: connectivityChecker,
         synqConfig: const SynqConfig(
           autoStartSync: true,
           autoSyncInterval: Duration(seconds: 1),
@@ -100,6 +111,7 @@ void main() {
       final manager = SynqManager<TestEntity>(
         localAdapter: localAdapter,
         remoteAdapter: remoteAdapter,
+        connectivity: connectivityChecker,
         synqConfig: const SynqConfig(
           autoSyncInterval: Duration(seconds: 1),
         ),
@@ -137,6 +149,7 @@ void main() {
       final manager = SynqManager<TestEntity>(
         localAdapter: localAdapter,
         remoteAdapter: remoteAdapter,
+        connectivity: connectivityChecker,
         synqConfig: const SynqConfig(
           autoStartSync: true,
           autoSyncInterval: Duration(seconds: 1),
@@ -175,6 +188,7 @@ void main() {
       final setupManager = SynqManager<TestEntity>(
         localAdapter: localAdapter,
         remoteAdapter: remoteAdapter,
+        connectivity: connectivityChecker,
         synqConfig: const SynqConfig(),
       );
 
@@ -200,6 +214,7 @@ void main() {
       final manager = SynqManager<TestEntity>(
         localAdapter: localAdapter,
         remoteAdapter: remoteAdapter,
+        connectivity: connectivityChecker,
         synqConfig: const SynqConfig(
           autoStartSync: true,
           autoSyncInterval: Duration(seconds: 1),
@@ -229,6 +244,7 @@ void main() {
       final manager = SynqManager<TestEntity>(
         localAdapter: localAdapter,
         remoteAdapter: remoteAdapter,
+        connectivity: connectivityChecker,
         synqConfig: const SynqConfig(
           autoStartSync: true,
           enableLogging: true,

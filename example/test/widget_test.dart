@@ -11,20 +11,33 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:synq_manager_example/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
+  testWidgets('Adds and displays a task', (WidgetTester tester) async {
     // Build our app and trigger a frame.
     await tester.pumpWidget(const MyApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // The app starts with a loading indicator.
+    //We need to wait for it to finish.
+    await tester.pumpAndSettle();
+
+    // Verify that no tasks are displayed initially.
+    expect(find.text('No tasks yet'), findsOneWidget);
+    expect(find.text('My first task'), findsNothing);
 
     // Tap the '+' icon and trigger a frame.
     await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tester.pumpAndSettle(); // Wait for the dialog to appear.
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Verify the dialog is open.
+    expect(find.text('Add Task'), findsOneWidget);
+
+    // Enter 'My first task' into the TextField.
+    await tester.enterText(find.byType(TextField), 'My first task');
+
+    // Tap the 'Add' button.
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pumpAndSettle(); // Wait for the UI to update.
+
+    // Verify that the new task is displayed.
+    expect(find.text('My first task'), findsOneWidget);
   });
 }
