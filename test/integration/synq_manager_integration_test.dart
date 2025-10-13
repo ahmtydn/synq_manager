@@ -1,20 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:synq_manager/src/config/synq_config.dart';
-import 'package:synq_manager/src/core/synq_manager.dart';
-import 'package:synq_manager/src/events/data_change_event.dart';
-import 'package:synq_manager/src/events/initial_sync_event.dart';
-import 'package:synq_manager/src/events/sync_event.dart';
-import 'package:synq_manager/src/models/sync_result.dart';
-import 'package:synq_manager/src/models/sync_scope.dart';
-import 'package:synq_manager/src/query/pagination.dart';
-import 'package:synq_manager/src/query/synq_query.dart';
-import 'package:synq_manager/src/resolvers/last_write_wins_resolver.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:synq_manager/src/core/synq_observer.dart';
+import 'package:synq_manager/synq_manager.dart';
 
 import '../mocks/mock_adapters.dart';
 import '../mocks/mock_connectivity_checker.dart';
 import '../mocks/test_entity.dart';
+
+class MockSynqObserver<T extends SyncableEntity> extends Mock
+    implements SynqObserver<T> {}
 
 void main() {
   group('SynqManager Integration Tests', () {
@@ -24,6 +20,23 @@ void main() {
     late MockConnectivityChecker connectivityChecker;
     final events = <SyncEvent<TestEntity>>[];
     final initEvents = <InitialSyncEvent<TestEntity>>[];
+
+    setUpAll(() {
+      registerFallbackValue(
+        TestEntity(
+          id: 'fb',
+          userId: 'fb',
+          name: 'fb',
+          value: 0,
+          modifiedAt: DateTime(0),
+          createdAt: DateTime(0),
+          version: 1,
+        ),
+      );
+      registerFallbackValue(
+        DataSource.local,
+      );
+    });
 
     setUp(() async {
       localAdapter = MockLocalAdapter<TestEntity>();
@@ -59,6 +72,62 @@ void main() {
     test('correctly identifies adapter names', () {
       expect(manager.localAdapter.name, 'MockLocalAdapter');
       expect(manager.remoteAdapter.name, 'MockRemoteAdapter');
+    });
+
+    group('SynqObserver', () {
+      late MockSynqObserver<TestEntity> mockObserver;
+
+      setUp(() {
+        mockObserver = MockSynqObserver<TestEntity>();
+        manager.addObserver(mockObserver);
+      });
+
+      test('onSaveStart and onSaveEnd are called on save()', () async {
+        final entity = TestEntity(
+          id: 'obs-e1',
+          userId: 'user1',
+          name: 'Observer Test',
+          value: 1,
+          modifiedAt: DateTime.now(),
+          createdAt: DateTime.now(),
+          version: 1,
+        );
+
+        await manager.save(entity, 'user1');
+
+        verify(() => mockObserver.onSaveStart(entity, 'user1', DataSource.local))
+            .called(1);
+        verify(() => mockObserver.onSaveEnd(any(), 'user1', DataSource.local))
+            .called(1);
+      });
+
+      test('onDeleteStart and onDeleteEnd are called on successful delete()',
+          () async {
+        final entity = TestEntity(
+          id: 'obs-e2',
+          userId: 'user1',
+          name: 'Observer Delete Test',
+          value: 1,
+          modifiedAt: DateTime.now(),
+          createdAt: DateTime.now(),
+          version: 1,
+        );
+        await manager.save(entity, 'user1');
+
+        await manager.delete(entity.id, 'user1');
+
+        verify(() => mockObserver.onDeleteStart(entity.id, 'user1')).called(1);
+        verify(() => mockObserver.onDeleteEnd(entity.id, 'user1', success: true))
+            .called(1);
+      });
+
+      test('onDeleteEnd is called with success: false for non-existent item',
+          () async {
+        await manager.delete('non-existent-id', 'user1');
+
+        verify(() => mockObserver.onDeleteStart('non-existent-id', 'user1')).called(1);
+        verifyNever(() => mockObserver.onDeleteEnd(any(), any(), success: any(named: 'success')));
+      });
     });
 
     test('saves entity locally and enqueues sync operation', () async {

@@ -67,6 +67,8 @@ void main() {
         .thenAnswer((_) => const Stream.empty());
     when(() => mockRemoteAdapter.changeStream)
         .thenAnswer((_) => const Stream.empty());
+    when(() => mockLocalAdapter.name).thenReturn('MockedLocalAdapter');
+    when(() => mockRemoteAdapter.name).thenReturn('MockedRemoteAdapter');
 
     synqManager = SynqManager<TestEntity>(
       localAdapter: mockLocalAdapter,
