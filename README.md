@@ -57,6 +57,7 @@ ud
 ### 🔌 **Pluggable Architecture**
 - **Adapter System** - Support for Hive, SQLite, Firestore, or custom backends
 - **Middleware Pipeline** - Transform, validate, and log at every stage
+- **Lifecycle Observers** - Hook into sync, save, delete, and conflict events.
 - **Extensible Design** - Easy to extend and customize
 
 ### 📈 **Enterprise Features**
@@ -232,6 +233,19 @@ manager.watchById('task-id', 'user123').listen((task) {
 final pendingOnlyQuery = SynqQuery({'completed': false});
 manager.watchQuery(pendingOnlyQuery, userId: 'user123').listen((pendingTasks) {
   print('Pending task list updated, count: ${pendingTasks.length}');
+});
+
+// For efficient data checks, use watchCount, watchFirst, or watchExists.
+manager.watchCount(query: pendingOnlyQuery, userId: 'user123').listen((count) {
+  print('You have $count pending tasks.');
+});
+
+manager.watchExists(query: pendingOnlyQuery, userId: 'user123').listen((hasPending) {
+  if (hasPending) {
+    print('There are still tasks to do!');
+  } else {
+    print('All tasks are complete!');
+  }
 });
 
 // ✏️ Update

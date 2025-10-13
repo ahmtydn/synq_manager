@@ -3,10 +3,13 @@
 ## [2.2.0]
 
 ### Added
+- 🔭 **Lifecycle Observers**: Introduced the `SynqObserver` abstract class, allowing you to hook into key lifecycle events. Monitor `save`, `delete`, `sync`, `conflict`, and `userSwitch` operations for advanced logging, analytics, or side-effects.
 - 🎧 **Reactive Queries**: Introduced `watchAll`, `watchById`, `watchQuery`, and `watchAllPaginated` on `SynqManager` to provide real-time, reactive streams of data. Your UI can now automatically update when underlying data changes.
+- ⚡️ **Efficient Data Checks**: Added `watchCount`, `watchFirst`, and `watchExists` for highly efficient, reactive checks on your data without fetching full lists.
 - 🎯 **Partial Synchronization**: New `SyncScope` model allows you to sync a subset of remote data (e.g., by date range), reducing network usage and sync time for large datasets.
 - 🔌 **Adapter Stream Support**: `LocalAdapter` and `RemoteAdapter` now support `changeStream()` and reactive `watch*` methods, forming the foundation for real-time capabilities.
 - 🧪 **Reactive Query Tests**: Added comprehensive integration tests for `watchAll`, `watchById`, `watchQuery`, and partial sync scopes.
+- 🧪 **Observer Tests**: Added integration tests for `SynqObserver` to ensure all lifecycle hooks are called correctly.
 
 ### Improved
 - 🔄 **Per-Operation Retry Logic**: Sync operations that fail due to transient network errors are now individually retried up to a configurable limit (`maxRetries`), making synchronization more resilient. A single failed item no longer blocks the entire sync queue.
@@ -16,6 +19,7 @@
 
 ### Fixed
 - 🐛 **User Switching Strategy**: Corrected the logic for `promptIfUnsyncedData` to properly prevent user switching when unsynced data is present.
+- 🐛 **Duplicate Change Processing**: Implemented a data hash check to prevent the same external change from being processed multiple times, avoiding redundant operations.
 - 🐛 **Connectivity Check**: Fixed a type error in `ConnectivityChecker` to correctly handle the `List<ConnectivityResult>` returned by `connectivity_plus: ^5.0.0` and newer, ensuring network status is detected correctly.
 - 🐛 **macOS Connectivity**: Corrected the plugin registration for `connectivity_plus` on macOS to use `ConnectivityPlusPlugin`.
 
@@ -24,11 +28,12 @@
 - ⚠️ **Exception Model**: Introduced `NetworkException` to better distinguish retryable network errors from other failures.
 - ♻️ **Conflict Detection**: Simplified conflict detection logic by removing an unnecessary time difference check and relying solely on version comparison.
 - 📦 **Dependencies**: Updated `build_runner`, `test`, `very_good_analysis`, and `mocktail` dependencies.
+- ♻️ **Adapter Naming**: `LocalAdapter` and `RemoteAdapter` `name` property is now dynamic, based on the class's runtime type.
 
 ### Documentation
-- 📝 **Enhanced README**: Major updates to `README.md` to document the new reactive query APIs (`watchAll`, `watchById`) with clear examples.
+- 📝 **Enhanced README**: Major updates to `README.md` to document the new reactive query APIs (`watchAll`, `watchById`) and the new `SynqObserver` pattern with clear examples.
 - 📖 **Example README**: Updated the example app's `README.md` to reflect its new reactive architecture.
-- 📝 **Sync Events**: Added detailed descriptions and `toString()` methods to all `SyncEvent` classes for easier debugging.
+- 📝 **Event & Observer Clarity**: Added detailed descriptions and `toString()` methods to all `SyncEvent` classes for easier debugging.
 
 ### Style
 - 💄 **Code Formatting**: Enforced an 80-character line length across the project for better readability.
