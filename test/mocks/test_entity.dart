@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
 
+/// A mock entity for testing purposes.
 @immutable
 class TestEntity implements SyncableEntity {
+  /// Creates a [TestEntity].
   const TestEntity({
     required this.id,
     required this.userId,
@@ -35,7 +37,6 @@ class TestEntity implements SyncableEntity {
 
   final String name;
   final int value;
-  final bool completed;
 
   @override
   final DateTime modifiedAt;
@@ -48,6 +49,9 @@ class TestEntity implements SyncableEntity {
 
   @override
   final bool isDeleted;
+
+  /// A custom field for testing queries.
+  final bool completed;
 
   @override
   Map<String, dynamic> toJson() => {
@@ -94,6 +98,8 @@ class TestEntity implements SyncableEntity {
           userId == other.userId &&
           name == other.name &&
           value == other.value &&
+          modifiedAt == other.modifiedAt &&
+          createdAt == other.createdAt &&
           version == other.version &&
           isDeleted == other.isDeleted &&
           completed == other.completed;
@@ -104,6 +110,8 @@ class TestEntity implements SyncableEntity {
       userId.hashCode ^
       name.hashCode ^
       value.hashCode ^
+      modifiedAt.hashCode ^
+      createdAt.hashCode ^
       version.hashCode ^
       isDeleted.hashCode ^
       completed.hashCode;

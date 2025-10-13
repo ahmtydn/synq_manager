@@ -1,83 +1,86 @@
+import 'package:flutter/foundation.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
 
-/// Base class for all events emitted by the synchronization system.
+/// Base class for all synchronization-related events.
+@immutable
 abstract class SyncEvent<T extends SyncableEntity> {
-  /// Creates a sync event.
-  const SyncEvent({required this.userId, required this.timestamp});
+  /// Creates a base sync event.
+  SyncEvent({required this.userId, DateTime? timestamp})
+      : timestamp = timestamp ?? DateTime.now();
 
-  /// User ID associated with the event.
+  /// The user ID associated with this event.
   final String userId;
 
-  /// Timestamp when the event occurred.
+  /// The time at which the event occurred.
   final DateTime timestamp;
 
   @override
   String toString() => 'SyncEvent(userId: $userId, timestamp: $timestamp)';
 }
 
-/// Event emitted when a sync operation starts.
+/// Event fired when a synchronization cycle starts.
 class SyncStartedEvent<T extends SyncableEntity> extends SyncEvent<T> {
   /// Creates a sync started event.
   SyncStartedEvent({
     required super.userId,
     required this.pendingOperations,
-    DateTime? timestamp,
-  }) : super(timestamp: timestamp ?? DateTime.now());
+    super.timestamp,
+  });
 
-  /// Number of operations pending sync.
+  /// The number of pending operations to be synced.
   final int pendingOperations;
 
   @override
   String toString() =>
-      'SyncStartedEvent(pendingOperations: $pendingOperations)';
+      '${super.toString()}: SyncStartedEvent(pendingOperations: $pendingOperations)';
 }
 
-/// Event emitted during sync to report progress.
+/// Event fired to report synchronization progress.
 class SyncProgressEvent<T extends SyncableEntity> extends SyncEvent<T> {
   /// Creates a sync progress event.
   SyncProgressEvent({
     required super.userId,
     required this.completed,
     required this.total,
-    DateTime? timestamp,
-  })  : progress = total == 0 ? 0 : completed / total,
-        super(timestamp: timestamp ?? DateTime.now());
+    super.timestamp,
+  });
 
-  /// Number of completed operations.
+  /// The number of operations completed so far.
   final int completed;
 
-  /// Total number of operations.
+  /// The total number of operations in this sync cycle.
   final int total;
 
-  /// Progress as a fraction (0.0 to 1.0).
-  final double progress;
+  /// The progress of the sync as a value between 0.0 and 1.0.
+  double get progress => total > 0 ? completed / total : 0.0;
 
   @override
   String toString() =>
-      'SyncProgressEvent(completed: $completed, total: $total, progress: $progress)';
+      '${super.toString()}: SyncProgressEvent(completed: $completed, total: $total, progress: $progress)';
 }
 
-/// Event emitted when a sync operation completes.
+/// Event fired when a synchronization cycle completes.
 class SyncCompletedEvent<T extends SyncableEntity> extends SyncEvent<T> {
   /// Creates a sync completed event.
   SyncCompletedEvent({
     required super.userId,
     required this.synced,
     required this.failed,
-    DateTime? timestamp,
-  }) : super(timestamp: timestamp ?? DateTime.now());
+    super.timestamp,
+  });
 
-  /// Number of successfully synced operations.
+  /// The number of operations that were successfully synced.
   final int synced;
 
-  /// Number of failed operations.
+  /// The number of operations that failed to sync.
   final int failed;
 
   @override
-  String toString() => 'SyncCompletedEvent(synced: $synced, failed: $failed)';
+  String toString() =>
+      '${super.toString()}: SyncCompletedEvent(synced: $synced, failed: $failed)';
 }
 
-/// Event emitted when a sync error occurs.
+/// Event fired when an error occurs during synchronization.
 class SyncErrorEvent<T extends SyncableEntity> extends SyncEvent<T> {
   /// Creates a sync error event.
   SyncErrorEvent({
@@ -85,19 +88,19 @@ class SyncErrorEvent<T extends SyncableEntity> extends SyncEvent<T> {
     required this.error,
     this.stackTrace,
     this.isRecoverable = true,
-    DateTime? timestamp,
-  }) : super(timestamp: timestamp ?? DateTime.now());
+    super.timestamp,
+  });
 
-  /// Error message.
-  final String error;
+  /// The error object or message.
+  final Object error;
 
-  /// Stack trace if available.
+  /// The stack trace associated with the error, if available.
   final StackTrace? stackTrace;
 
-  /// Whether the error is recoverable.
+  /// Whether the error is considered recoverable.
   final bool isRecoverable;
 
   @override
   String toString() =>
-      'SyncErrorEvent(error: $error, stackTrace: $stackTrace, isRecoverable: $isRecoverable)';
+      '${super.toString()}: SyncErrorEvent(error: $error, stackTrace: $stackTrace, isRecoverable: $isRecoverable)';
 }

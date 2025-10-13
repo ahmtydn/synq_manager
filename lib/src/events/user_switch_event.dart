@@ -19,4 +19,8 @@ class UserSwitchedEvent<T extends SyncableEntity> extends SyncEvent<T> {
 
   /// Whether the previous user had unsynced data.
   final bool hadUnsyncedData;
+
+  @override
+  String toString() =>
+      '${super.toString()}: UserSwitchedEvent(previousUserId: $previousUserId, newUserId: $newUserId, hadUnsyncedData: $hadUnsyncedData)';
 }

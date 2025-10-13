@@ -22,4 +22,8 @@ class ConflictDetectedEvent<T extends SyncableEntity> extends SyncEvent<T> {
 
   /// Remote version of the data.
   final T? remoteData;
+
+  @override
+  String toString() =>
+      '${super.toString()}: ConflictDetectedEvent(context: $context, localData: $localData, remoteData: $remoteData)';
 }

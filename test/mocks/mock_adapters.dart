@@ -248,6 +248,11 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
       rethrow;
     }
   }
+
+  /// Helper to directly add an item to the mock storage for test setup.
+  void addLocalItem(String userId, T item) {
+    _storage.putIfAbsent(userId, () => {})[item.id] = item;
+  }
 }
 
 class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {

@@ -20,6 +20,10 @@ class DataChangeEvent<T extends SyncableEntity> extends SyncEvent<T> {
 
   /// Source of the change.
   final DataSource source;
+
+  @override
+  String toString() =>
+      '${super.toString()}: DataChangeEvent(data: $data, changeType: $changeType, source: $source)';
 }
 
 /// Type of data change.

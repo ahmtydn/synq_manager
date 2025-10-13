@@ -14,4 +14,7 @@ class InitialSyncEvent<T extends SyncableEntity> extends SyncEvent<T> {
 
   /// Complete snapshot of the user's dataset at the time of subscription.
   final List<T> data;
+
+  @override
+  String toString() => '${super.toString()}: InitialSyncEvent(data: $data)';
 }

@@ -473,10 +473,15 @@ class SynqManager<T extends SyncableEntity> {
       throw ArgumentError.value(newUserId, 'newUserId', 'Must not be empty');
     }
 
+    if (oldUserId != null && oldUserId.isNotEmpty) {
+      await _ensureUserInitialized(oldUserId);
+    }
+
     final resolvedStrategy = strategy ?? _config.defaultUserSwitchStrategy;
     final hadUnsynced = await _hasUnsyncedData(oldUserId);
 
     try {
+      // Execute the strategy. This will throw on failure for certain strategies.
       await _executeUserSwitchStrategy(
         resolvedStrategy,
         oldUserId,
@@ -484,19 +489,21 @@ class SynqManager<T extends SyncableEntity> {
         hadUnsynced,
       );
 
+      // If the strategy succeeds, proceed with success-related logic.
       await _ensureUserInitialized(newUserId);
 
       _emitUserSwitchedEvent(oldUserId, newUserId, hadUnsynced);
       _metrics.userSwitchCount += 1;
-
       _logger.info('User switched from $oldUserId to $newUserId');
 
+      // Return the success result.
       return UserSwitchResult.success(
         previousUserId: oldUserId,
         newUserId: newUserId,
         unsyncedOperationsHandled: hadUnsynced ? 1 : 0,
       );
     } on UserSwitchException catch (e) {
+      // Handle specific user switch failures (e.g., promptIfUnsyncedData).
       _logger.warn('User switch rejected: ${e.message}');
       return UserSwitchResult.failure(
         previousUserId: oldUserId,
@@ -504,6 +511,7 @@ class SynqManager<T extends SyncableEntity> {
         errorMessage: e.message,
       );
     } on Object catch (e, stack) {
+      // Handle any other unexpected errors during the switch.
       _logger.error('User switch failed', stack);
       return UserSwitchResult.failure(
         previousUserId: oldUserId,

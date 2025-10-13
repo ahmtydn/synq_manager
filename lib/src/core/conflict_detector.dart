@@ -45,11 +45,7 @@ class ConflictDetector<T extends SyncableEntity> {
         );
       }
 
-      final localModified = localItem.modifiedAt;
-      final remoteModified = remoteItem.modifiedAt;
-      if (localModified.difference(remoteModified).abs() >
-              const Duration(milliseconds: 10) &&
-          localItem.version != remoteItem.version) {
+      if (localItem.version != remoteItem.version) {
         return ConflictContext(
           userId: userId,
           entityId: localItem.id,

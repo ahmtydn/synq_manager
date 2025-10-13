@@ -55,6 +55,11 @@ class HealthCheck {
     }
     return HealthStatus.healthy;
   }
+
+  @override
+  String toString() {
+    return 'HealthCheck(isLocalStorageHealthy: $isLocalStorageHealthy, isRemoteConnected: $isRemoteConnected, hasPendingOperations: $hasPendingOperations, pendingOperationCount: $pendingOperationCount, hasFailedOperations: $hasFailedOperations, failedOperationCount: $failedOperationCount, lastSuccessfulSync: $lastSuccessfulSync, warnings: $warnings, errors: $errors)';
+  }
 }
 
 /// Overall health status levels.
@@ -120,6 +125,11 @@ class SyncStatusDetails<T extends SyncableEntity> {
   /// Time elapsed since last sync.
   Duration? get timeSinceLastSync =>
       lastSyncTime != null ? DateTime.now().difference(lastSyncTime!) : null;
+
+  @override
+  String toString() {
+    return 'SyncStatusDetails(userId: $userId, isSyncing: $isSyncing, lastSyncTime: $lastSyncTime, lastSuccessfulSync: $lastSuccessfulSync, pendingOperations: $pendingOperations, failedOperations: $failedOperations, currentBatch: $currentBatch, progress: $progress, health: $health)';
+  }
 }
 
 /// Sync health status levels.
