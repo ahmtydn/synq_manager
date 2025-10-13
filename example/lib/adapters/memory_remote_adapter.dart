@@ -1,6 +1,6 @@
 import 'dart:async';
-
 import 'package:synq_manager/synq_manager.dart';
+import 'package:synq_manager_example/adapters/memory_local_adapter.dart';
 
 /// In-memory implementation of RemoteAdapter for demonstration purposes.
 /// In production, use Firebase, REST API, GraphQL, or other remote storage.
@@ -193,15 +193,11 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
   Stream<List<T>>? watchQuery(SynqQuery query, String userId) {
     // Helper to apply query logic on the remote data
     Future<List<T>> getFiltered() async {
-      var items = await fetchAll(userId);
-      // Simple mock implementation for a 'completed' filter
-      if (query.filters.containsKey('completed')) {
-        items = items.where((item) {
-          final json = item.toMap();
-          return json['completed'] == query.filters['completed'];
-        }).toList();
-      }
-      return items;
+      final items = await fetchAll(userId);
+      // We can reuse the query logic from the MemoryLocalAdapter for this demo.
+      final tempLocalAdapter = MemoryLocalAdapter<T>(fromJson: fromJson);
+      final filteredItems = tempLocalAdapter.applyQuery(items, query);
+      return filteredItems;
     }
 
     // Initial data snapshot

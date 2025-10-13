@@ -31,6 +31,7 @@ export 'src/models/syncable_entity.dart';
 export 'src/models/user_switch_result.dart';
 export 'src/query/index_config.dart';
 export 'src/query/pagination.dart';
+export 'src/query/sql_query_helper.dart';
 export 'src/query/synq_query.dart';
 export 'src/resolvers/last_write_wins_resolver.dart';
 export 'src/resolvers/local_priority_resolver.dart';

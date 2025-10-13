@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:synq_manager/synq_manager.dart';
 
 /// In-memory implementation of LocalAdapter for demonstration purposes.
@@ -246,15 +247,7 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
 
     // Helper to apply query
     Future<List<T>> getFiltered() async {
-      var items = await getAll(userId: userId);
-      // Simple mock implementation for a 'completed' filter on Task
-      if (query.filters.containsKey('completed')) {
-        items = items.where((item) {
-          final json = item.toMap();
-          return json['completed'] == query.filters['completed'];
-        }).toList();
-      }
-      return items;
+      return applyQuery(await getAll(userId: userId), query);
     }
 
     final initialDataStream = Stream.fromFuture(getFiltered());
@@ -330,5 +323,161 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
       final item = fromJson(rawItem);
       _storage.putIfAbsent(item.userId, () => {})[item.id] = item;
     }
+  }
+
+  // A helper function to apply query filters and sorting to a list of items.
+  List<T> applyQuery(List<T> items, SynqQuery query) {
+    var filteredItems = items.where((item) {
+      final json = item.toMap();
+      if (query.logicalOperator == LogicalOperator.and) {
+        return query.filters.every((filter) => _matches(json, filter));
+      } else {
+        return query.filters.any((filter) => _matches(json, filter));
+      }
+    }).toList();
+
+    if (query.sorting.isNotEmpty) {
+      filteredItems.sort((a, b) {
+        for (final sort in query.sorting) {
+          final valA = a.toMap()[sort.field];
+          final valB = b.toMap()[sort.field];
+
+          if (valA == null && valB == null) continue;
+          if (valA == null) {
+            return sort.nullSortOrder == NullSortOrder.first ? -1 : 1;
+          }
+          if (valB == null) {
+            return sort.nullSortOrder == NullSortOrder.first ? 1 : -1;
+          }
+
+          if (valA is Comparable && valB is Comparable) {
+            final comparison = valA.compareTo(valB);
+            if (comparison != 0) {
+              return sort.descending ? -comparison : comparison;
+            }
+          }
+        }
+        return 0;
+      });
+    }
+
+    if (query.offset != null) {
+      filteredItems = filteredItems.skip(query.offset!).toList();
+    }
+    if (query.limit != null) {
+      filteredItems = filteredItems.take(query.limit!).toList();
+    }
+
+    return filteredItems;
+  }
+
+  bool _matches(Map<String, dynamic> json, FilterCondition condition) {
+    if (condition is Filter) {
+      final value = json[condition.field];
+      if (value == null && condition.operator != FilterOperator.isNull) {
+        return false;
+      }
+
+      switch (condition.operator) {
+        case FilterOperator.equals:
+          return value == condition.value;
+        case FilterOperator.notEquals:
+          return value != condition.value;
+        case FilterOperator.greaterThan:
+          return value is Comparable && value.compareTo(condition.value) > 0;
+        case FilterOperator.greaterThanOrEqual:
+          return value is Comparable && value.compareTo(condition.value) >= 0;
+        case FilterOperator.lessThan:
+          return value is Comparable && value.compareTo(condition.value) < 0;
+        case FilterOperator.lessThanOrEqual:
+          return value is Comparable && value.compareTo(condition.value) <= 0;
+        case FilterOperator.contains:
+          return value is String && value.contains(condition.value as String);
+        case FilterOperator.isIn:
+          return condition.value is List &&
+              (condition.value as List).contains(value);
+        case FilterOperator.isNotIn:
+          return condition.value is List &&
+              !(condition.value as List).contains(value);
+        case FilterOperator.isNull:
+          return value == null;
+        case FilterOperator.isNotNull:
+          return value != null;
+        case FilterOperator.containsIgnoreCase:
+          return value is String &&
+              condition.value is String &&
+              value
+                  .toLowerCase()
+                  .contains((condition.value as String).toLowerCase());
+        case FilterOperator.startsWith:
+          return value is String &&
+              condition.value is String &&
+              value.startsWith(condition.value as String);
+        case FilterOperator.endsWith:
+          return value is String &&
+              condition.value is String &&
+              value.endsWith(condition.value as String);
+        case FilterOperator.arrayContains:
+          return value is List && value.contains(condition.value);
+        case FilterOperator.arrayContainsAny:
+          if (value is! List || condition.value is! List) return false;
+          final valueSet = value.toSet();
+          return (condition.value as List).any(valueSet.contains);
+        case FilterOperator.matches:
+          return value is String &&
+              condition.value is String &&
+              RegExp(condition.value as String).hasMatch(value);
+        case FilterOperator.withinDistance:
+          if (value is! Map || condition.value is! Map) return false;
+          final point = value as Map<String, dynamic>;
+          final params = condition.value as Map<String, dynamic>;
+          final center = params['center'] as Map<String, double>?;
+          final radius = params['radius'] as double?;
+          if (point['latitude'] == null ||
+              point['longitude'] == null ||
+              center == null ||
+              radius == null) {
+            return false;
+          }
+          final distance = _haversineDistance(
+            point['latitude'] as double,
+            point['longitude'] as double,
+            center['latitude']!,
+            center['longitude']!,
+          );
+          return distance <= radius;
+        case FilterOperator.between:
+          if (value is! Comparable || condition.value is! List) return false;
+          final bounds = condition.value as List;
+          if (bounds.length != 2) return false;
+          return value.compareTo(bounds[0]) >= 0 &&
+              value.compareTo(bounds[1]) <= 0;
+      }
+    } else if (condition is CompositeFilter) {
+      if (condition.operator == LogicalOperator.and) {
+        return condition.conditions.every((c) => _matches(json, c));
+      } else {
+        return condition.conditions.any((c) => _matches(json, c));
+      }
+    }
+    return false;
+  }
+
+  double _haversineDistance(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
+    const r = 6371e3; // Earth's radius in metres
+    final phi1 = lat1 * pi / 180;
+    final phi2 = lat2 * pi / 180;
+    final deltaPhi = (lat2 - lat1) * pi / 180;
+    final deltaLambda = (lon2 - lon1) * pi / 180;
+
+    final a = sin(deltaPhi / 2) * sin(deltaPhi / 2) +
+        cos(phi1) * cos(phi2) * sin(deltaLambda / 2) * sin(deltaLambda / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return r * c;
   }
 }

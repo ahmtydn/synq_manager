@@ -142,7 +142,9 @@ void main() {
       final completedEntity = TestEntity.create('completed1', 'user1', 'Done')
           .copyWith(completed: true);
 
-      const query = SynqQuery({'completed': false});
+      final query = (SynqQueryBuilder<TestEntity>()
+            ..where('completed', isEqualTo: false))
+          .build();
       final stream = manager.watchQuery(query, userId: 'user1');
 
       final completer = Completer<List<List<TestEntity>>>();
@@ -167,6 +169,111 @@ void main() {
       expect(allEvents[3], isEmpty);
 
       await subscription.cancel();
+    });
+
+    test('watchQuery with sorting emits correctly ordered lists', () async {
+      final entity1 =
+          TestEntity.create('e1', 'user1', 'Item A').copyWith(value: 10);
+      final entity2 =
+          TestEntity.create('e2', 'user1', 'Item B').copyWith(value: 20);
+      final entity3 =
+          TestEntity.create('e3', 'user1', 'Item C').copyWith(value: 5);
+
+      final query = (SynqQueryBuilder<TestEntity>()
+            ..orderBy('value', descending: true))
+          .build();
+
+      final stream = manager.watchQuery(query, userId: 'user1');
+
+      expect(
+        stream,
+        emitsInOrder([
+          isEmpty,
+          (List<TestEntity> list) =>
+              [10].every((v) => list.map((e) => e.value).contains(v)),
+          (List<TestEntity> list) =>
+              list.map((e) => e.value).toList().toString() == '[20, 10]',
+          (List<TestEntity> list) =>
+              list.map((e) => e.value).toList().toString() == '[20, 10, 5]',
+        ]),
+      );
+
+      await manager.push(entity1, 'user1');
+      await manager.push(entity2, 'user1');
+      await manager.push(entity3, 'user1');
+    });
+
+    test('watchQuery with filter and sorting works correctly', () async {
+      final entity1 = TestEntity.create('e1', 'user1', 'A').copyWith(
+        value: 10,
+        completed: true,
+      );
+      final entity2 = TestEntity.create('e2', 'user1', 'B').copyWith(
+        value: 20,
+        completed: false,
+      );
+      final entity3 = TestEntity.create('e3', 'user1', 'C').copyWith(
+        value: 5,
+        completed: false,
+      );
+
+      final query = (SynqQueryBuilder<TestEntity>()
+            ..where('completed', isEqualTo: false)
+            ..orderBy('value'))
+          .build();
+
+      final stream = manager.watchQuery(query, userId: 'user1');
+
+      expect(
+        stream,
+        emitsInOrder([
+          isEmpty,
+          isEmpty, // After pushing completed item
+          (List<TestEntity> list) =>
+              [20].every((v) => list.map((e) => e.value).contains(v)),
+          (List<TestEntity> list) =>
+              list.map((e) => e.value).toList().toString() == '[5, 20]',
+        ]),
+      );
+
+      await manager.push(entity1, 'user1');
+      await manager.push(entity2, 'user1');
+      await manager.push(entity3, 'user1');
+    });
+
+    test('watchQuery with OR logic emits correct results', () async {
+      final entity1 =
+          TestEntity.create('e1', 'user1', 'High Prio').copyWith(value: 10);
+      final entity2 = TestEntity.create('e2', 'user1', 'Completed')
+          .copyWith(completed: true);
+      final entity3 =
+          TestEntity.create('e3', 'user1', 'Low Prio').copyWith(value: 1);
+
+      final query = (SynqQueryBuilder<TestEntity>()
+            ..logicalOperator = LogicalOperator.or
+            ..where('completed', isEqualTo: true)
+            ..where('value', isGreaterThan: 5))
+          .build();
+
+      final stream = manager.watchQuery(query, userId: 'user1');
+
+      expect(
+        stream,
+        emitsInOrder([
+          isEmpty,
+          // Pushing e1 (value > 5)
+          (List<TestEntity> list) => list.length == 1 && list.first.id == 'e1',
+          // Pushing e2 (completed)
+          (List<TestEntity> list) =>
+              list.length == 2 && list.any((e) => e.id == 'e2'),
+          // Pushing e3 (neither condition met)
+          (List<TestEntity> list) => list.length == 2,
+        ]),
+      );
+
+      await manager.push(entity1, 'user1');
+      await manager.push(entity2, 'user1');
+      await manager.push(entity3, 'user1');
     });
 
     test('watchAll stream is user-specific and works after user switch',

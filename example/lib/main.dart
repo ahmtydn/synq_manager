@@ -113,7 +113,9 @@ class _TaskListScreenState extends State<TaskListScreen> {
   void _setTasksStream() {
     if (_currentFilter == 'Pending') {
       // Use watchQuery to get only incomplete tasks
-      const query = SynqQuery({'completed': false});
+      final query = (SynqQueryBuilder<Task>()
+            ..where('completed', isEqualTo: false))
+          .build();
       setState(() {
         _tasksStream = _manager.watchQuery(query, userId: _currentUserId);
       });
