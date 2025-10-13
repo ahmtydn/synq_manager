@@ -7,6 +7,7 @@ import 'package:synq_manager/src/events/data_change_event.dart';
 import 'package:synq_manager/src/events/initial_sync_event.dart';
 import 'package:synq_manager/src/events/sync_event.dart';
 import 'package:synq_manager/src/models/sync_result.dart';
+import 'package:synq_manager/src/query/pagination.dart';
 import 'package:synq_manager/src/resolvers/last_write_wins_resolver.dart';
 
 import '../mocks/mock_adapters.dart';
@@ -359,6 +360,159 @@ void main() {
       final retrieved = await manager.getById('nonexistent', 'user1');
 
       expect(retrieved, isNull);
+    });
+
+    test('watchAll emits updated lists on data changes', () async {
+      final entity1 = TestEntity(
+        id: 'entity1',
+        userId: 'user1',
+        name: 'Item 1',
+        value: 1,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+      final entity2 = TestEntity(
+        id: 'entity2',
+        userId: 'user1',
+        name: 'Item 2',
+        value: 2,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+
+      final stream = manager.watchAll(userId: 'user1');
+
+      // Use a Completer to capture stream events without blocking
+      final completer = Completer<List<List<TestEntity>>>();
+      final receivedEvents = <List<TestEntity>>[];
+
+      final subscription = stream.listen((items) {
+        receivedEvents.add(items);
+        if (receivedEvents.length == 4) {
+          completer.complete(receivedEvents);
+        }
+      });
+
+      // Initial state (empty)
+      await manager.save(entity1, 'user1'); // Add one
+      await manager.save(entity2, 'user1'); // Add another
+      await manager.delete(entity1.id, 'user1'); // Delete one
+
+      final allEvents = await completer.future;
+
+      expect(allEvents[0], isEmpty); // 1. Initial empty list
+      expect(allEvents[1], hasLength(1)); // 2. After adding entity1
+      expect(allEvents[1].first.id, 'entity1');
+      expect(allEvents[2], hasLength(2)); // 3. After adding entity2
+      expect(allEvents[3], hasLength(1)); // 4. After deleting entity1
+      expect(allEvents[3].first.id, 'entity2');
+
+      await subscription.cancel();
+    });
+
+    test('watchById emits updated entity and null on deletion', () async {
+      final entity = TestEntity(
+        id: 'entity1',
+        userId: 'user1',
+        name: 'Item 1',
+        value: 1,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+
+      final updatedEntity = entity.copyWith(name: 'Updated Item');
+
+      final stream = manager.watchById('entity1', 'user1');
+
+      final completer = Completer<List<TestEntity?>>();
+      final receivedEvents = <TestEntity?>[];
+
+      final subscription = stream.listen((item) {
+        receivedEvents.add(item);
+        if (receivedEvents.length == 4) {
+          completer.complete(receivedEvents);
+        }
+      });
+
+      // Sequence of operations
+      await manager.save(entity, 'user1');
+      await manager.save(updatedEntity, 'user1');
+      await manager.delete(entity.id, 'user1');
+
+      final allEvents = await completer.future;
+
+      expect(allEvents[0], isNull); // 1. Initial state (null)
+      expect(allEvents[1]?.name, 'Item 1'); // 2. After creation
+      expect(allEvents[2]?.name, 'Updated Item'); // 3. After update
+      expect(allEvents[3], isNull); // 4. After deletion
+
+      await subscription.cancel();
+    });
+
+    test('watchAllPaginated emits updated paginated results', () async {
+      // Create 3 entities
+      final entities = List.generate(
+        3,
+        (i) => TestEntity(
+          id: 'entity$i',
+          userId: 'user1',
+          name: 'Item $i',
+          value: i,
+          modifiedAt: DateTime.now(),
+          createdAt: DateTime.now(),
+          version: 1,
+        ),
+      );
+
+      const config = PaginationConfig(pageSize: 2);
+      final stream = manager.watchAllPaginated(config, userId: 'user1');
+
+      final completer = Completer<List<PaginatedResult<TestEntity>>>();
+      final receivedEvents = <PaginatedResult<TestEntity>>[];
+
+      final subscription = stream.listen((result) {
+        receivedEvents.add(result);
+        // We expect 5 states: initial, add 1, add 2, add 3, delete 1
+        if (receivedEvents.length == 5) {
+          completer.complete(receivedEvents);
+        }
+      });
+
+      // Sequence of operations
+      await manager.save(entities[0], 'user1');
+      await manager.save(entities[1], 'user1');
+      await manager.save(entities[2], 'user1');
+      await manager.delete(entities[0].id, 'user1');
+
+      final allEvents = await completer.future;
+
+      // 1. Initial state
+      expect(allEvents[0].items, isEmpty);
+      expect(allEvents[0].totalCount, 0);
+
+      // 2. After adding first item
+      expect(allEvents[1].items, hasLength(1));
+      expect(allEvents[1].totalCount, 1);
+
+      // 3. After adding second item (fills the page)
+      expect(allEvents[2].items, hasLength(2));
+      expect(allEvents[2].totalCount, 2);
+      expect(allEvents[2].hasMore, isFalse);
+
+      // 4. After adding third item (creates a second page)
+      expect(allEvents[3].items, hasLength(2));
+      expect(allEvents[3].totalCount, 3);
+      expect(allEvents[3].hasMore, isTrue);
+
+      // 5. After deleting first item
+      expect(allEvents[4].items, hasLength(2));
+      expect(allEvents[4].totalCount, 2);
+      expect(allEvents[4].hasMore, isFalse);
+
+      await subscription.cancel();
     });
   });
 }

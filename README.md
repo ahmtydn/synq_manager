@@ -208,13 +208,18 @@ await manager.save(task, 'user123');
 final allTasks = await manager.getAll(userId: 'user123');
 final specificTask = await manager.getById('task-id', 'user123');
 
-// 🎧 Read (real-time stream)
-// The `onInit` stream provides an initial snapshot of all data,
-// followed by live updates. This is perfect for powering UIs.
-manager.onInit.listen((event) {
-  final tasks = event.data;
-  // Update your UI with the full list of tasks
-  print('Received initial data with ${tasks.length} tasks.');
+// 🎧 Read (reactive queries)
+// Use watchAll to get a stream of all items that updates automatically.
+// Perfect for powering a list view in Flutter.
+manager.watchAll(userId: 'user123').listen((tasks) {
+  // Update your UI with the new list of tasks
+  print('Task list updated, new count: ${tasks.length}');
+});
+
+// Use watchById for a single item.
+manager.watchById('task-id', 'user123').listen((task) {
+  // task is null if it has been deleted.
+  print('Task details updated: ${task?.title}');
 });
 
 // ✏️ Update
@@ -226,7 +231,10 @@ final updated = task.copyWith(
 await manager.save(updated, 'user123');
 
 // 🗑️ Delete
-await manager.delete('task-id', 'user123');
+// The delete method now returns a boolean indicating if an item was deleted.
+final bool wasDeleted = await manager.delete('task-id', 'user123');
+if (wasDeleted) print('Task deleted successfully!');
+
 ```
 
 ### 5️⃣ Synchronization

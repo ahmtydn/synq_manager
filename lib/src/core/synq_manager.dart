@@ -23,7 +23,12 @@ import 'package:synq_manager/src/resolvers/sync_conflict_resolver.dart';
 import 'package:synq_manager/src/utils/connectivity_checker.dart';
 import 'package:synq_manager/src/utils/logger.dart';
 import 'package:synq_manager/synq_manager.dart'
-    show SynqConfig, UserSwitchException, UserSwitchStrategy;
+    show
+        PaginatedResult,
+        PaginationConfig,
+        SynqConfig,
+        UserSwitchException,
+        UserSwitchStrategy;
 import 'package:uuid/uuid.dart';
 
 /// Orchestrates bidirectional synchronization between local
@@ -244,6 +249,19 @@ class SynqManager<T extends SyncableEntity> {
       throw ArgumentError.value(userId, 'userId', 'Must not be empty');
     }
     return localAdapter.watchById(id, userId) ?? const Stream.empty();
+  }
+
+  /// Returns a stream of paginated entities for the specified user.
+  ///
+  /// The stream emits a new paginated result whenever the underlying data changes.
+  /// Returns an empty stream if the adapter does not support watching.
+  Stream<PaginatedResult<T>> watchAllPaginated(
+    PaginationConfig config, {
+    String? userId,
+  }) {
+    _ensureInitializedAndNotDisposed();
+    return localAdapter.watchAllPaginated(config, userId: userId) ??
+        const Stream.empty();
   }
 
   /// Persists an entity to local storage and queues for remote synchronization.
