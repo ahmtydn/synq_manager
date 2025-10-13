@@ -716,40 +716,140 @@ manager.onSyncProgress.listen((event) {
 });
 ```
 
-#### Conflicts
+
+## 📖 Core Concepts
+
+### 🎯 SyncableEntity
+
+All entities must implement the `SyncableEntity` interface:
+
 ```dart
-manager.onConflict.listen((event) {
-  print('Conflict Type: ${event.context.type}');
-  print('Entity ID: ${event.context.entityId}');
-  print('Resolution: ${event.resolution?.action}');
-});
+abstract class SyncableEntity {
+  String get id;
+  String get userId;
+  DateTime get modifiedAt;
+  DateTime get createdAt;
+  String get version;
+  bool get isDeleted;
+
+  Map<String, dynamic> toMap();
+  T copyWith({...});
+}
 ```
 
-#### Errors
+### 🗂️ Index Configuration
+
+To optimize query performance, you can define index configurations for your syncable entities:
+
 ```dart
-manager.onError.listen((event) {
-  print('Error: ${event.error}');
-  print('Operation: ${event.operation}');
-  print('Can Retry: ${event.canRetry}');
-});
+/// Configuration for database indexes on syncable entities.
+abstract class IndexConfig<T extends SyncableEntity> {
+  /// List of fields that should be indexed.
+  List<String Function(T)> get indexedFields;
+
+  /// List of composite indexes (multi-field indexes).
+  List<List<String Function(T)>> get compositeIndexes => const [];
+}
 ```
 
-#### Sync Status
+**Usage Example:**
+
 ```dart
-manager.syncStatusStream.listen((snapshot) {
-  print('Status: ${snapshot.status}');
-  print('Progress: ${snapshot.progress}');
-  print('Pending: ${snapshot.pendingOperations}');
-});
+class TaskIndexConfig extends IndexConfig<Task> {
+  @override
+  List<String Function(Task)> get indexedFields => [
+    (t) => t.userId,
+    (t) => t.completed.toString(),
+  ];
+
+  @override
+  List<List<String Function(Task)>> get compositeIndexes => [
+    [(t) => t.userId, (t) => t.completed.toString()],
+  ];
+}
 ```
 
-### 📡 All Events
+
+### 🔍 Querying: SynqQuery, Pagination & SynqQuerySqlConverter
+
+#### SynqQuery
+
+`SynqQuery` is a flexible query builder for filtering, sorting, and paginating your data. You can use it to express complex queries in a type-safe way.
+
+**Example:**
+
 ```dart
-manager.eventStream.listen((event) {
-  if (event is DataChangeEvent<Task>) {
-    // Handle data change
-  } else if (event is SyncProgressEvent) {
-    // Handle sync progress
+final query = SynqQueryBuilder<Task>()
+  .where('completed', isEqualTo: false)
+  .orderBy('createdAt', descending: true)
+  .limit(10)
+  .build();
+```
+
+#### Pagination Usage
+
+You can easily paginate results using the `limit` and `offset` methods on `SynqQueryBuilder`:
+
+```dart
+// Fetch the first page (10 items)
+final firstPage = SynqQueryBuilder<Task>()
+  .limit(10)
+  .build();
+
+// Fetch the second page (next 10 items)
+final secondPage = SynqQueryBuilder<Task>()
+  .limit(10)
+  .offset(10)
+  .build();
+
+// Usage with the manager:
+final page1 = await manager.query(firstPage, userId: 'user123');
+final page2 = await manager.query(secondPage, userId: 'user123');
+```
+
+You can also use cursor-based pagination if your adapter supports it, or combine with sorting for stable paging.
+
+#### SynqQuerySqlConverter
+
+You can convert a `SynqQuery` to a parameterized SQL query for use with SQLite, PostgreSQL, or other SQL databases:
+
+```dart
+final result = query.toSql('tasks');
+print(result.sql);    // SELECT * FROM tasks WHERE "completed" = ?
+print(result.params); // [false]
+```
+
+You can also customize the SQL dialect and provide custom operator logic:
+
+```dart
+final result = query.toSql(
+  'tasks',
+  dialect: SqlDialect.postgresql,
+  customBuilder: (filter, getPlaceholder, params) {
+    // Custom SQL for geospatial, JSON, etc.
+    return null; // fallback to default
+  },
+);
+```
+
+**See also:**
+- `SynqQueryBuilder` for building queries
+- `SynqQuerySqlConverter` extension for SQL conversion
+
+### 🔄 Sync Operation Flow
+
+```
+1. User Action → Save/Delete
+2. Local Storage ← Data Written
+3. Queue Manager ← Operation Enqueued
+4. Sync Trigger → Periodic/Manual
+5. Sync Engine → Process Queue
+6. Remote Adapter → Push to Server
+7. Conflict Detection → If Needed
+8. Resolution → Apply Strategy
+9. Events → Notify Listeners
+10. Metrics → Update Statistics
+```
   } else if (event is ConflictEvent<Task>) {
     // Handle conflict
   } else if (event is ErrorEvent) {
