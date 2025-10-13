@@ -18,6 +18,14 @@ abstract class LocalAdapter<T extends SyncableEntity> {
     return null;
   }
 
+  /// A stream that emits when the schema version changes.
+  ///
+  /// This is an optional stream that can be used for advanced scenarios where
+  /// the UI needs to react to schema migrations.
+  Stream<int>? schemaVersionStream() {
+    return null;
+  }
+
   /// Watch all items belonging to the given user.
   ///
   /// Returns a stream that emits the full list of items whenever data changes.

@@ -331,6 +331,19 @@ class SynqManager<T extends SyncableEntity> {
       );
 
       final transformed = await _applyPreSaveTransformations(item);
+
+      // For updates, calculate the delta (the changed fields)
+      Map<String, dynamic>? delta;
+      if (!isCreate) {
+        delta = transformed.diff(existing);
+        if (delta == null) {
+          _logger.debug(
+            'No changes detected for entity ${item.id}, skipping save.',
+          );
+          return transformed; // No-op if no fields changed
+        }
+      }
+
       _logger.debug('Saving transformed entity ${item.id} to local adapter');
       await localAdapter.save(transformed, userId);
 
@@ -339,6 +352,7 @@ class SynqManager<T extends SyncableEntity> {
         type: isCreate ? SyncOperationType.create : SyncOperationType.update,
         entityId: transformed.id,
         data: transformed,
+        delta: delta, // Store the delta for the sync engine
       );
       _logger.debug(
         'Enqueuing ${operation.type.name} operation ${operation.id}',
@@ -644,7 +658,7 @@ class SynqManager<T extends SyncableEntity> {
           return SyncResult(
             userId: userId,
             syncedCount: 0,
-            failedCount: 0,
+            failedCount: 1,
             conflictsResolved: 0,
             pendingOperations: const [],
             duration: Duration.zero,
@@ -695,6 +709,14 @@ class SynqManager<T extends SyncableEntity> {
     _ensureInitializedAndNotDisposed();
     await _ensureUserInitialized(userId);
     return _queueManager.getPending(userId).length;
+  }
+
+  /// Returns a list of pending synchronization operations for the user.
+  /// This is mainly for testing and debugging purposes.
+  List<SyncOperation<T>> getPendingOperations(String userId) {
+    _ensureInitializedAndNotDisposed();
+    // This is a direct, synchronous access to the in-memory queue.
+    return _queueManager.getPending(userId);
   }
 
   /// Retries all failed synchronization operations by forcing a new sync.
@@ -918,12 +940,14 @@ class SynqManager<T extends SyncableEntity> {
     required SyncOperationType type,
     required String entityId,
     T? data,
+    Map<String, dynamic>? delta,
   }) {
     return SyncOperation<T>(
       id: const Uuid().v4(),
       userId: userId,
       type: type,
       data: data,
+      delta: delta,
       entityId: entityId,
       timestamp: DateTime.now(),
     );

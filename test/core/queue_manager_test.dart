@@ -95,7 +95,7 @@ void main() {
 
       expect(queueManager.getPending('user1'), hasLength(1));
 
-      await queueManager.markCompleted('user1', 'op1');
+      await queueManager.dequeue('op1');
 
       expect(queueManager.getPending('user1'), isEmpty);
     });

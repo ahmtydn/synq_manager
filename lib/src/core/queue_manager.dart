@@ -53,10 +53,10 @@ class QueueManager<T extends SyncableEntity> {
 
   /// Updates an existing operation in the queue.
   /// Used for tracking retries.
-  Future<void> update(String userId, SyncOperation<T> operation) async {
+  Future<void> update(SyncOperation<T> operation) async {
+    final userId = operation.userId;
     final list = _pendingByUser[userId];
     if (list == null) return;
-
     final index = list.indexWhere((op) => op.id == operation.id);
     if (index != -1) {
       list[index] = operation;
@@ -68,14 +68,25 @@ class QueueManager<T extends SyncableEntity> {
     }
   }
 
-  /// Marks an operation as completed and removes it from the queue.
-  Future<void> markCompleted(String userId, String operationId) async {
-    final list = _pendingByUser[userId];
-    if (list == null) return;
-    list.removeWhere((op) => op.id == operationId);
+  /// Removes an operation from the queue after it has been synced.
+  Future<void> dequeue(String operationId) async {
+    String? targetUserId;
+
+    // Find which user's queue contains the operation and remove it.
+    for (final entry in _pendingByUser.entries) {
+      final userId = entry.key;
+      final operations = entry.value;
+      final initialLength = operations.length;
+      operations.removeWhere((op) => op.id == operationId);
+      if (operations.length < initialLength) {
+        targetUserId = userId;
+        _controllers[userId]?.add(List.unmodifiable(operations));
+        break; // Found and removed, no need to check other users.
+      }
+    }
+
     await localAdapter.markAsSynced(operationId);
-    _controllers[userId]?.add(List.unmodifiable(list));
-    logger.debug('Marked operation $operationId as synced for $userId');
+    logger.debug('Marked operation $operationId as synced for $targetUserId');
   }
 
   /// Clears all pending operations for a user.

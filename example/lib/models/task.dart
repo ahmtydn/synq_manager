@@ -59,6 +59,7 @@ class Task implements SyncableEntity {
         'isDeleted': isDeleted,
       };
 
+  @override
   Task copyWith({
     String? userId,
     DateTime? modifiedAt,
@@ -102,4 +103,20 @@ class Task implements SyncableEntity {
   @override
   String toString() =>
       'Task(id: $id, title: $title, completed: $completed, version: $version)';
+
+  @override
+  Map<String, dynamic>? diff(SyncableEntity oldVersion) {
+    if (oldVersion is! Task) {
+      // If types don't match, return the full object as a "diff"
+      return toJson()
+        ..remove('id')
+        ..remove('userId');
+    }
+
+    final diffMap = <String, dynamic>{};
+    if (title != oldVersion.title) diffMap['title'] = title;
+    if (completed != oldVersion.completed) diffMap['completed'] = completed;
+
+    return diffMap.isEmpty ? null : diffMap;
+  }
 }

@@ -1,23 +1,31 @@
-/// Base contract for entities that participate in synchronization.
+import 'package:synq_manager/synq_manager.dart';
+
+/// An interface for entities that can be synchronized by [SynqManager].
 abstract class SyncableEntity {
-  /// Unique identifier for the entity.
+  /// A unique identifier for the entity.
   String get id;
 
-  /// Owner of the entity.
+  /// The ID of the user who owns this entity.
   String get userId;
 
-  /// Timestamp of last modification.
+  /// The last time the entity was modified.
   DateTime get modifiedAt;
 
-  /// Timestamp of creation.
+  /// The time the entity was created.
   DateTime get createdAt;
 
-  /// Version or hash used during conflict detection.
+  /// The version of the entity, used for conflict detection.
   int get version;
 
-  /// Whether the entity has been soft deleted.
+  /// A flag indicating if the entity is soft-deleted.
   bool get isDeleted;
 
-  /// Convert this entity to a serializable representation.
+  /// Creates a JSON representation of the entity.
   Map<String, dynamic> toJson();
+
+  /// Creates a copy of the entity with updated fields.
+  SyncableEntity copyWith();
+
+  /// Compares this entity with an older version and returns a map of changed fields.
+  Map<String, dynamic>? diff(SyncableEntity oldVersion);
 }

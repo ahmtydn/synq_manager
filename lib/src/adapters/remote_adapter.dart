@@ -1,75 +1,43 @@
-import 'package:synq_manager/src/models/change_detail.dart';
-import 'package:synq_manager/src/models/conflict_context.dart';
-import 'package:synq_manager/src/models/conflict_resolution.dart';
-import 'package:synq_manager/src/models/sync_metadata.dart';
-import 'package:synq_manager/src/models/sync_operation.dart';
-import 'package:synq_manager/src/models/sync_scope.dart';
-import 'package:synq_manager/src/models/syncable_entity.dart';
+import 'package:synq_manager/synq_manager.dart';
 
-/// Remote adapter abstraction for communicating with server-side data sources.
+/// Remote storage adapter abstraction for cloud data sources.
 abstract class RemoteAdapter<T extends SyncableEntity> {
-  /// A descriptive name for the adapter (e.g., "Firebase", "REST API").
+  /// A descriptive name for the adapter (e.g., "Firebase", "REST").
   /// Defaults to the runtime class name.
   String get name => runtimeType.toString();
 
-  /// Stream of changes that occur in the remote storage.
-  /// Implementations should emit events when data changes externally
-  /// (e.g., from another device or user).
-  /// Return null if the adapter doesn't support change notifications.
+  /// Stream of changes that occur in the remote data source.
+  /// Emits events when data changes externally.
+  /// Return null if the adapter doesn't support real-time change notifications.
   Stream<ChangeDetail<T>>? get changeStream => null;
 
-  /// Fetch all items belonging to the user from the remote source.
+  /// Fetch all items for a user, optionally filtered by a [SyncScope].
   Future<List<T>> fetchAll(String userId, {SyncScope? scope});
 
-  /// Fetch a single item by identifier.
+  /// Fetch a single item by its identifier for the given user.
   Future<T?> fetchById(String id, String userId);
 
-  /// Push (create/update) an item to the remote source,
-  /// returning the stored representation.
+  /// Push a full entity to the remote data source (for creates or full updates).
+  ///
+  /// Returns the entity as it exists on the remote after the push, which may
+  /// include server-generated fields or transformations.
   Future<T> push(T item, String userId);
 
-  /// Delete the item from the remote source.
+  /// Apply a partial update (a "patch") to an existing entity.
+  ///
+  /// The [delta] map should contain only the fields that have changed.
+  /// Returns the full entity from the remote after the patch is applied.
+  Future<T> patch(String id, String userId, Map<String, dynamic> delta);
+
+  /// Delete an entity from the remote data source.
   Future<void> deleteRemote(String id, String userId);
 
-  /// Retrieve remote-side metadata to compare sync states.
+  /// Retrieve metadata describing the user's sync state from the remote.
   Future<SyncMetadata?> getSyncMetadata(String userId);
 
-  /// Persist the latest sync metadata on the remote side.
-  ///
-  /// Implementations should store the provided [metadata] so that subsequent
-  /// calls to [getSyncMetadata] can retrieve an up-to-date snapshot.
-  Future<void> updateSyncMetadata(
-    SyncMetadata metadata,
-    String userId,
-  );
+  /// Persist updated metadata for the user's sync state to the remote.
+  Future<void> updateSyncMetadata(SyncMetadata metadata, String userId);
 
-  /// Determine whether remote connectivity is currently available.
+  /// Check if the remote data source is currently reachable.
   Future<bool> isConnected();
-}
-
-/// Details about a failed sync operation.
-class SyncOperationFailure<T extends SyncableEntity> {
-  /// Creates a sync operation failure.
-  const SyncOperationFailure({
-    required this.operation,
-    required this.error,
-    required this.canRetry,
-    this.conflictResolution,
-    this.conflictContext,
-  });
-
-  /// The operation that failed.
-  final SyncOperation<T> operation;
-
-  /// The error that occurred.
-  final Object error;
-
-  /// Whether the operation can be retried.
-  final bool canRetry;
-
-  /// Resolution if the failure was due to a conflict.
-  final ConflictResolution<T>? conflictResolution;
-
-  /// Context if the failure was due to a conflict.
-  final ConflictContext? conflictContext;
 }

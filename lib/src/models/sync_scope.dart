@@ -5,6 +5,12 @@ enum SyncDirection {
 
   /// Pull remote changes first, then push local changes.
   pullThenPush,
+
+  /// Only push local changes to the remote.
+  pushOnly,
+
+  /// Only pull remote changes to local.
+  pullOnly,
 }
 
 /// Defines a scope or filter for a synchronization operation.

@@ -70,6 +70,24 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
   }
 
   @override
+  Future<T> patch(String id, String userId, Map<String, dynamic> delta) async {
+    if (!_isConnected) {
+      throw Exception('No network connection');
+    }
+
+    // Simulate network delay
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+
+    final existing = _remoteStorage[userId]?[id];
+    if (existing == null) throw Exception('Entity not found for patching');
+
+    final json = existing.toJson()..addAll(delta);
+    final patchedItem = fromJson(json);
+    _remoteStorage.putIfAbsent(userId, () => {})[id] = patchedItem;
+    return patchedItem;
+  }
+
+  @override
   Future<void> deleteRemote(String id, String userId) async {
     if (!_isConnected) {
       throw Exception('No network connection');

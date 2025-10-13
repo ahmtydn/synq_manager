@@ -134,6 +134,11 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   }
 
   @override
+  Stream<int>? schemaVersionStream() {
+    return null;
+  }
+
+  @override
   Stream<List<T>>? watchAll({String? userId}) {
     final stream = changeStream();
     if (stream == null) return null;

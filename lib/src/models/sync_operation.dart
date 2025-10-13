@@ -1,131 +1,81 @@
-import 'package:meta/meta.dart';
-import 'package:synq_manager/src/models/syncable_entity.dart';
+import 'package:synq_manager/synq_manager.dart';
 
-/// Type of operation recorded in the sync queue.
-enum SyncOperationType {
-  /// Create a new entity.
-  create,
-
-  /// Update an existing entity.
-  update,
-
-  /// Delete an existing entity.
-  delete,
-}
-
-/// Current status of a queued operation.
-enum SyncOperationStatus {
-  /// Operation is waiting to be executed.
-  pending,
-
-  /// Operation is currently being executed.
-  inProgress,
-
-  /// Operation completed successfully.
-  completed,
-
-  /// Operation failed after execution.
-  failed,
-}
-
-/// Representation of a local operation that needs to be synchronized remotely.
-@immutable
+/// Represents a single operation (create, update, delete) to be synchronized.
 class SyncOperation<T extends SyncableEntity> {
-  /// Creates a sync operation.
+  /// Creates a [SyncOperation].
   const SyncOperation({
     required this.id,
     required this.userId,
-    required this.type,
     required this.entityId,
+    required this.type,
     required this.timestamp,
     this.data,
+    this.delta,
     this.retryCount = 0,
-    this.lastAttemptAt,
   });
 
-  /// Unique identifier for the operation.
+  /// A unique identifier for this operation.
   final String id;
 
-  /// ID of the user who initiated the operation.
+  /// The ID of the user this operation belongs to.
   final String userId;
 
-  /// Type of sync operation (create, update, delete).
-  final SyncOperationType type;
-
-  /// The entity data (null for delete operations).
-  final T? data;
-
-  /// ID of the entity being synchronized.
+  /// The ID of the entity this operation targets.
   final String entityId;
 
-  /// Timestamp when the operation was created.
+  /// The type of operation (create, update, delete).
+  final SyncOperationType type;
+
+  /// The full data payload of the entity.
+  ///
+  /// For `create` and `update`, this holds the complete entity state.
+  /// For `delete`, this may be null.
+  final T? data;
+
+  /// A map of only the fields that have changed for an `update` operation.
+  ///
+  /// If this is not null, the [SyncEngine] will attempt a partial "patch"
+  /// update instead of pushing the full entity.
+  final Map<String, dynamic>? delta;
+
+  /// The timestamp when the operation was created.
   final DateTime timestamp;
 
-  /// Number of retry attempts.
+  /// The number of times this operation has been retried.
   final int retryCount;
 
-  /// The timestamp of the last retry attempt.
-  final DateTime? lastAttemptAt;
-
-  /// Creates a copy with modified fields.
+  /// Creates a copy of this operation with updated fields.
   SyncOperation<T> copyWith({
     String? id,
     String? userId,
+    String? entityId,
     SyncOperationType? type,
     T? data,
-    String? entityId,
+    Map<String, dynamic>? delta,
     DateTime? timestamp,
     int? retryCount,
-    DateTime? lastAttemptAt,
   }) {
     return SyncOperation<T>(
       id: id ?? this.id,
       userId: userId ?? this.userId,
+      entityId: entityId ?? this.entityId,
       type: type ?? this.type,
       data: data ?? this.data,
-      entityId: entityId ?? this.entityId,
+      delta: delta ?? this.delta,
       timestamp: timestamp ?? this.timestamp,
       retryCount: retryCount ?? this.retryCount,
-      lastAttemptAt: lastAttemptAt ?? this.lastAttemptAt,
     );
   }
+}
 
-  /// Converts the operation to JSON format.
-  Map<String, dynamic> toJson(Map<String, dynamic> Function(T)? serializer) {
-    return {
-      'id': id,
-      'userId': userId,
-      'type': type.name,
-      'entityId': entityId,
-      'timestamp': timestamp.toIso8601String(),
-      'retryCount': retryCount,
-      if (lastAttemptAt != null)
-        'lastAttemptAt': lastAttemptAt!.toIso8601String(),
-      if (data != null && serializer != null) 'data': serializer(data!),
-    };
-  }
+/// The type of a synchronization operation.
+enum SyncOperationType {
+  /// A new entity was created.
+  create,
 
-  /// Creates a SyncOperation from JSON data.
-  static SyncOperation<T> fromJson<T extends SyncableEntity>(
-    Map<String, dynamic> json,
-    T? Function(Map<String, dynamic>)? deserializer,
-  ) {
-    return SyncOperation<T>(
-      id: json['id'] as String,
-      userId: json['userId'] as String,
-      type: SyncOperationType.values.firstWhere(
-        (value) => value.name == json['type'],
-        orElse: () => SyncOperationType.update,
-      ),
-      data: json['data'] != null && deserializer != null
-          ? deserializer(json['data'] as Map<String, dynamic>)
-          : null,
-      entityId: json['entityId'] as String,
-      timestamp: DateTime.parse(json['timestamp'] as String),
-      retryCount: json['retryCount'] as int? ?? 0,
-      lastAttemptAt: json['lastAttemptAt'] != null
-          ? DateTime.parse(json['lastAttemptAt'] as String)
-          : null,
-    );
-  }
+  /// An existing entity was updated.
+  update,
+
+  /// An entity was deleted.
+  delete,
 }

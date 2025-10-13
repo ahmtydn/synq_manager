@@ -3,7 +3,9 @@
 ## [2.2.0]
 
 ### Added
-- 🔭 **Lifecycle Observers**: Introduced the `SynqObserver` abstract class, allowing you to hook into key lifecycle events. Monitor `save`, `delete`, `sync`, `conflict`, and `userSwitch` operations for advanced logging, analytics, or side-effects.
+- 🏗️ **Schema Migration Framework**: Introduced a robust framework for managing data model changes over time. You can now define `Migration` classes to safely update your local database schema, preventing data loss for users on older app versions.
+- 🛡️ **Migration Error Handling & Observation**: Added an `onMigrationError` callback to `SynqConfig` for custom recovery strategies and introduced `onMigrationStart`, `onMigrationEnd`, and `onMigrationError` hooks to `SynqObserver` for detailed monitoring.
+-  **Lifecycle Observers**: Introduced the `SynqObserver` abstract class, allowing you to hook into key lifecycle events. Monitor `save`, `delete`, `sync`, `conflict`, and `userSwitch` operations for advanced logging, analytics, or side-effects.
 - 🎧 **Reactive Queries**: Introduced `watchAll`, `watchById`, `watchQuery`, and `watchAllPaginated` on `SynqManager` to provide real-time, reactive streams of data. Your UI can now automatically update when underlying data changes.
 - ⚡️ **Efficient Data Checks**: Added `watchCount`, `watchFirst`, and `watchExists` for highly efficient, reactive checks on your data without fetching full lists.
 - 🎯 **Partial Synchronization**: New `SyncScope` model allows you to sync a subset of remote data (e.g., by date range), reducing network usage and sync time for large datasets.
@@ -14,7 +16,7 @@
 ### Improved
 - 🔄 **Per-Operation Retry Logic**: Sync operations that fail due to transient network errors are now individually retried up to a configurable limit (`maxRetries`), making synchronization more resilient. A single failed item no longer blocks the entire sync queue.
 - 🚀 **Example App**: The example app has been completely overhauled to use `StreamBuilder` and the new reactive query methods, demonstrating modern, real-time UI patterns.
-- **Switching Tests**: Added robust integration tests for all `UserSwitchStrategy` options (`syncThenSwitch`, `clearAndFetch`, `promptIfUnsyncedData`).
+- 👥 **User Switching**: Added `UserSwitchStrategy` enum and integrated it into `SynqManager` to provide clear, configurable behavior when switching between user accounts.
 - **User Switch Strategy Execution**: Improved user switch strategy execution by running it before initializing the new user, adding null checks, and enhancing error handling.
 
 ### Fixed
@@ -25,7 +27,7 @@
 
 ### Changed
 - 🏗️ **Core Refactoring**: Exposed `localAdapter` and `remoteAdapter` publicly on `SynqManager` for easier access and customization in advanced scenarios.
-- ⚠️ **Exception Model**: Introduced `NetworkException` to better distinguish retryable network errors from other failures.
+- ⚠️ **Exception Model**: Introduced `MigrationException` and `NetworkException` to better distinguish different types of failures.
 - ♻️ **Conflict Detection**: Simplified conflict detection logic by removing an unnecessary time difference check and relying solely on version comparison.
 - 📦 **Dependencies**: Updated `build_runner`, `test`, `very_good_analysis`, and `mocktail` dependencies.
 - ♻️ **Adapter Naming**: `LocalAdapter` and `RemoteAdapter` `name` property is now dynamic, based on the class's runtime type.
@@ -40,6 +42,7 @@
 
 ### Test
 - ✅ **Migration Tests**: Added a comprehensive test suite for the schema migration framework, covering single-step, multi-step, and failure scenarios.
+- ✅ **User Switching Tests**: Added robust integration tests for all `UserSwitchStrategy` options (`syncThenSwitch`, `clearAndFetch`, `promptIfUnsyncedData`).
 - ✅ **Middleware Tests**: Added comprehensive tests for `SynqMiddleware`, covering all hooks like `transformBeforeSave`, `afterSync`, and `onConflict`.
 - ✅ **User Prompt Resolver Tests**: Added tests for `UserPromptResolver` covering all resolution scenarios.
 - ✅ **Sync Event Tests**: Added tests to verify the `toString()` output of all `SyncEvent` subclasses.

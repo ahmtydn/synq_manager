@@ -34,6 +34,12 @@ void main() {
         ),
       );
       registerFallbackValue(
+        <String, dynamic>{},
+      );
+      registerFallbackValue(
+        const SyncScope({}),
+      );
+      registerFallbackValue(
         DataSource.local,
       );
       registerFallbackValue(
@@ -73,7 +79,8 @@ void main() {
     setUp(() async {
       localAdapter =
           MockLocalAdapter<TestEntity>(fromJson: TestEntity.fromJson);
-      remoteAdapter = MockRemoteAdapter<TestEntity>();
+      remoteAdapter =
+          MockRemoteAdapter<TestEntity>(fromJson: TestEntity.fromJson);
       connectivityChecker = MockConnectivityChecker();
       events.clear();
       initEvents.clear();
@@ -85,6 +92,13 @@ void main() {
         synqConfig: const SynqConfig(), // Use default config
         connectivity: connectivityChecker,
       );
+
+      // Stub the patch method for remote adapter
+      // The actual implementation in the mock is now sufficient for most tests,
+      // but we can still override it if needed.
+      // when(() => remoteAdapter.patch(any(), any(), any())).thenAnswer(
+      //   (inv) async => TestEntity.create('patched', 'user1', 'Patched'),
+      // );
 
       await manager.initialize();
 
@@ -748,7 +762,8 @@ void main() {
       expect(remoteItems.first.id, 'success1');
 
       // Verify the failed operation is still in the queue with an increased retry count
-      final pendingOps = await localAdapter.getPendingOperations('user1');
+      // We check the QueueManager's state directly, as it's the source of truth.
+      final pendingOps = manager.getPendingOperations('user1');
       expect(pendingOps, hasLength(1));
       expect(pendingOps.first.entityId, 'fail1');
       expect(pendingOps.first.retryCount, 1);

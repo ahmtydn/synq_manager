@@ -26,6 +26,7 @@ export 'src/models/sync_operation.dart';
 export 'src/models/sync_options.dart';
 export 'src/models/sync_result.dart';
 export 'src/models/sync_scope.dart';
+export 'src/models/sync_status.dart';
 export 'src/models/syncable_entity.dart';
 export 'src/models/user_switch_result.dart';
 export 'src/query/index_config.dart';

@@ -91,7 +91,7 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
     SyncOperation<T> operation,
   ) async {
     final userOps = _pendingOps.putIfAbsent(userId, () => []);
-    // Handle updates for retry logic
+    // Handle updates for retry logic by replacing if exists, otherwise add.
     final existingIndex = userOps.indexWhere((op) => op.id == operation.id);
     if (existingIndex != -1) {
       userOps[existingIndex] = operation;
@@ -135,6 +135,11 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   @override
   Stream<ChangeDetail<T>>? changeStream() {
     return _changeController.stream;
+  }
+
+  @override
+  Stream<int>? schemaVersionStream() {
+    return null;
   }
 
   @override
@@ -327,11 +332,16 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
 }
 
 class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
+  MockRemoteAdapter({this.fromJson});
+
   final Map<String, Map<String, T>> _remoteStorage = {};
   final Map<String, SyncMetadata> _remoteMetadata = {};
   bool connected = true;
   final _changeController = StreamController<ChangeDetail<T>>.broadcast();
   final List<String> _failedIds = [];
+
+  /// A function to deserialize JSON into an entity of type T.
+  final T Function(Map<String, dynamic>)? fromJson;
 
   @override
   String get name => 'MockRemoteAdapter';
@@ -375,6 +385,29 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
       ),
     );
     return item;
+  }
+
+  @override
+  Future<T> patch(String id, String userId, Map<String, dynamic> delta) async {
+    if (!connected) throw NetworkException('No connection');
+    if (_failedIds.contains(id)) {
+      throw NetworkException('Simulated patch failure for $id');
+    }
+    if (fromJson == null) {
+      throw StateError(
+        'MockRemoteAdapter needs a fromJson constructor to handle patch.',
+      );
+    }
+
+    final existing = _remoteStorage[userId]?[id];
+    if (existing == null) {
+      throw Exception('Entity not found for patching in mock remote adapter.');
+    }
+
+    final json = existing.toJson()..addAll(delta);
+    final patchedItem = fromJson!(json);
+    _remoteStorage.putIfAbsent(userId, () => {})[id] = patchedItem;
+    return patchedItem;
   }
 
   @override

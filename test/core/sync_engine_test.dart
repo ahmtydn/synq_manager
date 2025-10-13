@@ -90,12 +90,13 @@ void main() {
           .thenAnswer((_) async => []);
       when(() => remoteAdapter.fetchAll(any(), scope: any(named: 'scope')))
           .thenAnswer((_) async => []);
+      when(() => localAdapter.getByIds(any(), any()))
+          .thenAnswer((_) async => {});
       when(() => localAdapter.getAll(userId: any(named: 'userId')))
           .thenAnswer((_) async => []);
       when(() => remoteAdapter.push(any(), any()))
           .thenAnswer((i) async => i.positionalArguments.first as TestEntity);
       when(() => localAdapter.save(any(), any())).thenAnswer((_) async {});
-
     });
 
     tearDown(() async {
@@ -105,26 +106,28 @@ void main() {
       await metadataSubject.close();
     });
 
-    test('restores remote data when remote is empty but local has entities',
+    test(
+        'does not push anything if remote is empty and there are no pending ops',
         () async {
-      final entity = TestEntity(
-        id: 'entity-1',
-        userId: 'user-1',
-        name: 'Local Only',
-        value: 1,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
-
+      // Arrange: Local adapter has an item, but it's not in the pending queue.
+      // Remote is empty.
+      final localEntity = TestEntity.create('e1', 'user-1', 'Local Only');
       when(() => localAdapter.getAll(userId: 'user-1'))
-          .thenAnswer((_) async => [entity]);
+          .thenAnswer((_) async => [localEntity]);
+      when(() => remoteAdapter.fetchAll('user-1', scope: any(named: 'scope')))
+          .thenAnswer((_) async => []);
 
+      // Act
       final result = await syncEngine.synchronize('user-1');
 
-      verify(() => remoteAdapter.push(entity, 'user-1')).called(1);
+      // Assert: Nothing should be pushed because there are no pending operations.
+      // The engine's job is to sync the queue, not discover discrepancies.
+      verifyNever(() => remoteAdapter.push(any(), any()));
+      verifyNever(() => remoteAdapter.patch(any(), any(), any()));
 
+      // The sync should still be "successful" as it completed without errors.
       expect(result.failedCount, 0);
+      expect(result.syncedCount, 0);
     });
 
     test('emits SyncMetadata on successful sync', () async {
@@ -142,7 +145,9 @@ void main() {
       final metadata = await futureMetadata;
       expect(metadata, isA<SyncMetadata>());
       expect(metadata.userId, 'user-1');
-      expect(metadata.itemCount, 1);
+      expect(metadata.itemCount, 1,
+          reason:
+              'Metadata should reflect the item count from localAdapter.getAll',);
       expect(metadata.dataHash, isNotEmpty);
       expect(
         metadata.lastSyncTime

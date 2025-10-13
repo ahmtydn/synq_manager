@@ -83,6 +83,7 @@ class TestEntity implements SyncableEntity {
         'completed': completed,
       };
 
+  @override
   TestEntity copyWith({
     String? id,
     String? userId,
@@ -132,4 +133,22 @@ class TestEntity implements SyncableEntity {
       version.hashCode ^
       isDeleted.hashCode ^
       completed.hashCode;
+
+  @override
+  Map<String, dynamic>? diff(SyncableEntity oldVersion) {
+    if (oldVersion is! TestEntity) {
+      // If types don't match, return the full object as a "diff"
+      return toJson()
+        ..remove('id')
+        ..remove('userId');
+    }
+
+    final diffMap = <String, dynamic>{};
+
+    if (name != oldVersion.name) diffMap['name'] = name;
+    if (value != oldVersion.value) diffMap['value'] = value;
+    if (completed != oldVersion.completed) diffMap['completed'] = completed;
+
+    return diffMap.isEmpty ? null : diffMap;
+  }
 }
