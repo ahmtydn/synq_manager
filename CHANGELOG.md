@@ -1,5 +1,32 @@
 # Changelog
 
+## [2.2.0]
+### Added
+- 🎧 **Reactive Queries**: Introduced `watchAll`, `watchById`, `watchQuery`, and `watchAllPaginated` on `SynqManager` to provide real-time, reactive streams of data. Your UI can now automatically update when underlying data changes.
+- 🎯 **Partial Synchronization**: New `SyncScope` model allows you to sync a subset of remote data (e.g., by date range), reducing network usage and sync time for large datasets.
+- 🔌 **Adapter Stream Support**: `LocalAdapter` and `RemoteAdapter` now support `changeStream()` and reactive `watch*` methods, forming the foundation for real-time capabilities.
+- 🧪 **Reactive Query Tests**: Added comprehensive integration tests for `watchAll`, `watchById`, `watchQuery`, and partial sync scopes.
+
+### Improved
+- 🔄 **Per-Operation Retry Logic**: Sync operations that fail due to transient network errors are now individually retried up to a configurable limit (`maxRetries`), making synchronization more resilient. A single failed item no longer blocks the entire sync queue.
+- 🚀 **Example App**: The example app has been completely overhauled to use `StreamBuilder` and the new reactive query methods, demonstrating modern, real-time UI patterns.
+- Switching Tests**: Added robust integration tests for all `UserSwitchStrategy` options (`syncThenSwitch`, `clearAndFetch`, `promptIfUnsyncedData`).
+
+### Fixed
+- 🐛 **User Switching Strategy**: Corrected the logic for `promptIfUnsyncedData` to properly prevent user switching when unsynced data is present.
+- 🐛 **Connectivity Check**: Fixed a type error in `ConnectivityChecker` to correctly handle the `List<ConnectivityResult>` returned by `connectivity_plus: ^5.0.0` and newer, ensuring network status is detected correctly.
+
+### Changed
+- 🏗️ **Core Refactoring**: Exposed `localAdapter` and `remoteAdapter` publicly on `SynqManager` for easier access and customization in advanced scenarios.
+- ⚠️ **Exception Model**: Introduced `NetworkException` to better distinguish retryable network errors from other failures.
+
+### Documentation
+- 📝 **Enhanced README**: Major updates to `README.md` to document the new reactive query APIs (`watchAll`, `watchById`) with clear examples.
+- 📖 **Example README**: Updated the example app's `README.md` to reflect its new reactive architecture.
+
+### Style
+- 💄 **Code Formatting**: Enforced an 80-character line length across the project for better readability.
+
 ## [2.1.10]
 ### Added
 - 🔑 **Initial User Bootstrap**: Introduced `SynqConfig.initialUserId` so auto-start sync can target a known user without scanning the entire local dataset

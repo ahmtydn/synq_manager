@@ -1,6 +1,6 @@
 name: synq_manager
 description: Offline-first data synchronization engine with intelligent conflict resolution and real-time events.
-version: 2.1.10
+version: 2.2.0
 homepage: https://github.com/ahmtydn/synq_manager
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -10,10 +10,10 @@ dependencies:
   flutter:
     sdk: flutter
   meta: ^1.11.0
-  rxdart: ^0.27.7
+  rxdart: ^0.28.0
   uuid: ^4.0.0
   crypto: ^3.0.3
-  connectivity_plus: ^5.0.2
+  connectivity_plus: ^7.0.0
 
 dev_dependencies:
   flutter_test:

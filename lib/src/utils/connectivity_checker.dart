@@ -13,12 +13,13 @@ class ConnectivityChecker {
   /// Checks if device is connected to the internet.
   Future<bool> get isConnected async {
     final result = await _connectivity.checkConnectivity();
-    return result != ConnectivityResult.none;
+    return !result.contains(ConnectivityResult.none);
   }
 
   /// Stream of connectivity status changes.
   Stream<bool> get onStatusChange {
-    return _connectivity.onConnectivityChanged
-        .map((event) => event != ConnectivityResult.none);
+    return _connectivity.onConnectivityChanged.map(
+      (event) => !event.contains(ConnectivityResult.none),
+    );
   }
 }
