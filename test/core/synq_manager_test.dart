@@ -676,7 +676,8 @@ void main() {
       });
 
       group('Concurrency', () {
-        test('handles concurrent push calls correctly', () async {
+        test('concurrent push calls are correctly queued and synced to remote',
+            () async {
           // Arrange
           final entities = List.generate(
             // Using a smaller number for faster tests
@@ -689,10 +690,19 @@ void main() {
           when(() => localAdapter.push(any(), any())).thenAnswer((_) async {});
           when(() => localAdapter.addPendingOperation(any(), any()))
               .thenAnswer((_) async {});
+          when(() => remoteAdapter.push(any(), any())).thenAnswer(
+            (i) async {
+              await Future<void>.delayed(const Duration(milliseconds: 20));
+              return i.positionalArguments.first as TestEntity;
+            },
+          );
 
-          // Act: Fire all push calls concurrently without awaiting each one
+          // Act 1: Fire all push calls concurrently to populate the queue
           final futures = entities.map((e) => manager.push(e, userId)).toList();
           await Future.wait(futures);
+
+          // Act 2: Trigger a sync to process the queue
+          await manager.sync(userId);
 
           // Assert
           // Verify that push was called for each entity
@@ -700,6 +710,8 @@ void main() {
           // Verify that an operation was enqueued for each entity
           verify(() => localAdapter.addPendingOperation(userId, any()))
               .called(5);
+          // Verify that each queued item was pushed to the remote
+          verify(() => remoteAdapter.push(any(), userId)).called(5);
         });
 
         test('handles concurrent pushSync calls correctly', () async {
@@ -718,7 +730,10 @@ void main() {
 
           // Mocks for the 'sync' part
           when(() => remoteAdapter.push(any(), any())).thenAnswer(
-            (i) async => i.positionalArguments.first as TestEntity,
+            (i) async {
+              await Future<void>.delayed(const Duration(milliseconds: 20));
+              return i.positionalArguments.first as TestEntity;
+            },
           );
 
           // Act: Fire all pushSync calls concurrently
@@ -751,7 +766,9 @@ void main() {
           when(() => localAdapter.addPendingOperation(any(), any()))
               .thenAnswer((_) async {});
           when(() => remoteAdapter.deleteRemote(any(), any()))
-              .thenAnswer((_) async {});
+              .thenAnswer((_) async {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+          });
 
           // Act: Fire all deleteSync calls concurrently
           final futures =
