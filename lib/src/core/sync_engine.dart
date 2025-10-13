@@ -170,17 +170,19 @@ class SyncEngine<T extends SyncableEntity> {
     final operationsToProcess = List<SyncOperation<T>>.from(
       queueManager.getPending(userId),
     );
+    final totalOps = operationsToProcess.length;
     if (operationsToProcess.isEmpty) {
       logger.info('No pending changes to push for user $userId.');
       return;
     }
 
     logger.info(
-      'Pushing ${operationsToProcess.length} changes for user $userId...',
+      'Pushing $totalOps changes for user $userId...',
     );
 
     // Track processed operation IDs to avoid double-processing
     final processedIds = <String>{};
+    var completedOps = 0;
 
     for (final operation in operationsToProcess) {
       if (_getSnapshot(userId).status != SyncStatus.syncing) break;
@@ -193,6 +195,18 @@ class SyncEngine<T extends SyncableEntity> {
 
       await _processPendingOperation(operation);
       processedIds.add(operation.id);
+      completedOps++;
+
+      // Update progress
+      final progress = totalOps > 0 ? completedOps / totalOps : 1.0;
+      _updateSnapshot(userId, (s) => s.copyWith(progress: progress));
+      eventController.add(
+        SyncProgressEvent(
+          userId: userId,
+          completed: completedOps,
+          total: totalOps,
+        ),
+      );
     }
   }
 
@@ -387,7 +401,17 @@ class SyncEngine<T extends SyncableEntity> {
       if (error != null) {
         newErrors.add(error);
       }
-      return s.copyWith(status: status, errors: newErrors);
+
+      // When transitioning to a terminal state (idle, failed, cancelled),
+      // the progress should be reset to 0.
+      final newProgress = (status == SyncStatus.idle ||
+              status == SyncStatus.failed ||
+              status == SyncStatus.cancelled)
+          ? 0.0
+          : s.progress;
+
+      return s.copyWith(
+          status: status, errors: newErrors, progress: newProgress,);
     });
   }
 

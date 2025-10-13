@@ -140,7 +140,9 @@ void main() {
       ).thenAnswer((_) async {});
       when(() => localAdapter.transaction(any()))
           .thenAnswer((invocation) async {
-        return await (invocation.positionalArguments.first as Function)();
+        final action =
+            invocation.positionalArguments.first as Future<dynamic> Function();
+        return action();
       });
 
       // Stub middleware after adapters
