@@ -1148,6 +1148,13 @@ class SynqManager<T extends SyncableEntity> {
       return;
     }
 
+    // Notify observers immediately, before any deduplication logic.
+    // This ensures that all incoming external events are visible for debugging.
+    _notifyObservers((o) => o.onExternalChange(change, source));
+    _logger.info(
+      'Received external change from $source: ${change.type.name} for ${change.entityId}',
+    );
+
     // Use a lock to prevent race conditions when multiple identical changes
     // arrive at the same time. This ensures they are processed sequentially.
     await _externalChangeLock.synchronized(() async {
@@ -1159,12 +1166,6 @@ class SynqManager<T extends SyncableEntity> {
           _logger.debug('Skipping duplicate change from $source: $changeKey');
           return;
         }
-
-        _logger.info(
-          'Processing external change from $source: ${change.type.name} '
-          'for entity ${change.entityId} (user: ${change.userId})',
-        );
-        _notifyObservers((o) => o.onExternalChange(change, source));
 
         if (await _isDuplicateOfPendingOperation(change)) {
           _logger.debug('Change already queued in pending operations');
