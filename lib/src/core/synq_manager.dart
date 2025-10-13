@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:crypto/crypto.dart';
+import 'package:synchronized/synchronized.dart';
 import 'package:synq_manager/src/core/migration_executor.dart';
 import 'package:synq_manager/synq_manager.dart';
 import 'package:uuid/uuid.dart';
@@ -62,6 +63,7 @@ class SynqManager<T extends SyncableEntity> {
   final List<SynqObserver<T>> _observers = [];
   final Map<String, Timer> _autoSyncTimers = {};
   final _metrics = SynqMetrics();
+  final _externalChangeLock = Lock();
   final Map<String, String> _processedChangeKeys = {};
 
   late final QueueManager<T> _queueManager;
@@ -307,15 +309,26 @@ class SynqManager<T extends SyncableEntity> {
   /// Applies all registered middleware transformations pre-save.
   /// Emits [DataChangeEvent] upon successful save.
   ///
+  /// The [source] parameter indicates the origin of the change. If the source
+  /// is [DataSource.remote], the operation will not be re-queued for remote sync.
+  /// The [forceRemoteSync] parameter can be set to `true` to override this
+  /// behavior and ensure the operation is queued for remote sync regardless
+  /// of the source.
+  ///
   /// Returns the transformed entity that was actually saved.
-  Future<T> push(T item, String userId) async {
+  Future<T> push(
+    T item,
+    String userId, {
+    DataSource source = DataSource.local,
+    bool forceRemoteSync = false,
+  }) async {
     _ensureInitializedAndNotDisposed();
 
     if (userId.isEmpty) {
       throw ArgumentError.value(userId, 'userId', 'Must not be empty');
     }
 
-    _logger.info('Saving entity ${item.id} for user $userId...');
+    _logger.info('Pushing entity ${item.id} for user $userId from $source...');
 
     _notifyObservers((o) => o.onSaveStart(item, userId, DataSource.local));
 
@@ -348,17 +361,26 @@ class SynqManager<T extends SyncableEntity> {
         _notifyObservers((o) => o.onPartialUpdate(item.id, userId, delta!));
       }
 
-      _logger.debug('Saving transformed entity ${item.id} to local adapter');
-      await localAdapter.push(transformed, userId);
+      if (isCreate || delta == null) {
+        _logger.debug('Pushing full entity ${item.id} to local adapter');
+        await localAdapter.push(transformed, userId);
+      } else {
+        _logger.debug(
+          'Patching entity ${item.id} in local adapter with ${delta.length} changes',
+        );
+        await localAdapter.patch(transformed.id, userId, delta);
+      }
 
-      final operation = _createOperation(
-        userId: userId,
-        type: isCreate ? SyncOperationType.create : SyncOperationType.update,
-        entityId: transformed.id,
-        data: transformed,
-        delta: delta, // Store the delta for the sync engine
-      );
-      await _queueManager.enqueue(operation);
+      if (source == DataSource.local || forceRemoteSync) {
+        final operation = _createOperation(
+          userId: userId,
+          type: isCreate ? SyncOperationType.create : SyncOperationType.update,
+          entityId: transformed.id,
+          data: transformed,
+          delta: delta, // Store the delta for the sync engine
+        );
+        await _queueManager.enqueue(operation);
+      }
 
       _emitDataChangeEvent(
         userId: userId,
@@ -385,7 +407,12 @@ class SynqManager<T extends SyncableEntity> {
   ///
   /// No-op if entity doesn't exist locally.
   /// Emits [DataChangeEvent] with deletion type upon successful removal.
-  Future<bool> delete(String id, String userId) async {
+  Future<bool> delete(
+    String id,
+    String userId, {
+    DataSource source = DataSource.local,
+    bool forceRemoteSync = false,
+  }) async {
     _ensureInitializedAndNotDisposed();
 
     if (id.isEmpty) {
@@ -395,7 +422,9 @@ class SynqManager<T extends SyncableEntity> {
       throw ArgumentError.value(userId, 'userId', 'Must not be empty');
     }
 
-    _logger.info('Attempting to delete entity $id for user $userId...');
+    _logger.info(
+      'Deleting entity $id for user $userId from $source...',
+    );
 
     _notifyObservers((o) => o.onDeleteStart(id, userId));
 
@@ -418,13 +447,15 @@ class SynqManager<T extends SyncableEntity> {
       }
       _logger.debug('Deleted entity $id from local adapter');
 
-      final operation = _createOperation(
-        userId: userId,
-        type: SyncOperationType.delete,
-        entityId: id,
-      );
+      if (source == DataSource.local || forceRemoteSync) {
+        final operation = _createOperation(
+          userId: userId,
+          type: SyncOperationType.delete,
+          entityId: id,
+        );
 
-      await _queueManager.enqueue(operation);
+        await _queueManager.enqueue(operation);
+      }
 
       _emitDataChangeEvent(
         userId: userId,
@@ -449,11 +480,18 @@ class SynqManager<T extends SyncableEntity> {
   Future<SyncResult> pushAndSync(
     T item,
     String userId, {
+    DataSource source = DataSource.local,
+    bool forceRemoteSync = false,
     SyncOptions<T>? options,
     SyncScope? scope,
   }) async {
     _ensureInitializedAndNotDisposed();
-    await push(item, userId);
+    await push(
+      item,
+      userId,
+      source: source,
+      forceRemoteSync: forceRemoteSync,
+    );
     return sync(
       userId,
       options: options,
@@ -468,11 +506,18 @@ class SynqManager<T extends SyncableEntity> {
   Future<SyncResult> deleteAndSync(
     String id,
     String userId, {
+    DataSource source = DataSource.local,
+    bool forceRemoteSync = false,
     SyncOptions<T>? options,
     SyncScope? scope,
   }) async {
     _ensureInitializedAndNotDisposed();
-    await delete(id, userId);
+    await delete(
+      id,
+      userId,
+      source: source,
+      forceRemoteSync: forceRemoteSync,
+    );
     return sync(
       userId,
       options: options,
@@ -850,7 +895,10 @@ class SynqManager<T extends SyncableEntity> {
     }
 
     _localChangeSubscription = localChangeStream.listen(
-      _handleExternalChange,
+      (change) => _handleExternalChange(
+        change,
+        source: DataSource.local,
+      ),
       onError: (Object error, StackTrace stackTrace) {
         _logger.error('Error in local change stream', stackTrace);
       },
@@ -868,7 +916,10 @@ class SynqManager<T extends SyncableEntity> {
     }
 
     _remoteChangeSubscription = remoteChangeStream.listen(
-      _handleExternalChange,
+      (change) => _handleExternalChange(
+        change,
+        source: DataSource.remote,
+      ),
       onError: (Object error, StackTrace stackTrace) {
         _logger.error('Error in remote change stream', stackTrace);
       },
@@ -1088,50 +1139,58 @@ class SynqManager<T extends SyncableEntity> {
   /// 3. Checks if local data is already identical
   ///
   /// Only processes changes that represent actual new work.
-  Future<void> _handleExternalChange(ChangeDetail<T> change) async {
+  Future<void> _handleExternalChange(
+    ChangeDetail<T> change, {
+    required DataSource source,
+  }) async {
     if (_disposed) {
       _logger.debug('Ignoring change after disposal');
       return;
     }
 
-    try {
-      final changeKey = _computeChangeKey(change);
-      final dataHash = _computeDataHash(change.data);
+    // Use a lock to prevent race conditions when multiple identical changes
+    // arrive at the same time. This ensures they are processed sequentially.
+    await _externalChangeLock.synchronized(() async {
+      try {
+        final changeKey = _computeChangeKey(change);
+        final dataHash = _computeDataHash(change.data);
 
-      if (_isAlreadyProcessed(changeKey, dataHash)) {
-        _logger.debug('Skipping duplicate change: $changeKey');
-        return;
-      }
+        if (_isAlreadyProcessed(changeKey, dataHash)) {
+          _logger.debug('Skipping duplicate change from $source: $changeKey');
+          return;
+        }
 
-      _logger.info(
-        'Processing external change: ${change.type.name} '
-        'for entity ${change.entityId} (user: ${change.userId})',
-      );
+        _logger.info(
+          'Processing external change from $source: ${change.type.name} '
+          'for entity ${change.entityId} (user: ${change.userId})',
+        );
+        _notifyObservers((o) => o.onExternalChange(change, source));
 
-      if (await _isDuplicateOfPendingOperation(change)) {
-        _logger.debug('Change already queued in pending operations');
+        if (await _isDuplicateOfPendingOperation(change)) {
+          _logger.debug('Change already queued in pending operations');
+          _markAsProcessed(changeKey, dataHash);
+          return;
+        }
+
+        if (await _isDataAlreadyCurrent(change)) {
+          _logger.debug('Local data already matches change');
+          _markAsProcessed(changeKey, dataHash);
+          return;
+        }
+
+        await _applyExternalChange(change, source: source);
         _markAsProcessed(changeKey, dataHash);
-        return;
+
+        _logger.debug('External change processed successfully: $changeKey');
+      } on Object catch (e, stack) {
+        _logger.error('Failed to handle external change', stack);
+        _emitError(
+          change.userId,
+          'Failed to process external change: $e',
+          stack,
+        );
       }
-
-      if (await _isDataAlreadyCurrent(change)) {
-        _logger.debug('Local data already matches change');
-        _markAsProcessed(changeKey, dataHash);
-        return;
-      }
-
-      await _applyExternalChange(change);
-      _markAsProcessed(changeKey, dataHash);
-
-      _logger.debug('External change processed successfully: $changeKey');
-    } on Object catch (e, stack) {
-      _logger.error('Failed to handle external change', stack);
-      _emitError(
-        change.userId,
-        'Failed to process external change: $e',
-        stack,
-      );
-    }
+    });
   }
 
   /// Computes a unique key for change deduplication.
@@ -1312,7 +1371,10 @@ class SynqManager<T extends SyncableEntity> {
   }
 
   /// Applies an external change to local storage.
-  Future<void> _applyExternalChange(ChangeDetail<T> change) async {
+  Future<void> _applyExternalChange(
+    ChangeDetail<T> change, {
+    required DataSource source,
+  }) async {
     switch (change.type) {
       case SyncOperationType.create:
       case SyncOperationType.update:
@@ -1324,13 +1386,20 @@ class SynqManager<T extends SyncableEntity> {
           return;
         }
 
-        await push(change.data!, change.userId);
+        await push(
+          change.data!,
+          change.userId,
+          source: source, // Pass the source to prevent re-queuing
+        );
         _logger.info(
           'Applied external ${change.type.name} for entity ${change.entityId}',
         );
 
       case SyncOperationType.delete:
-        await delete(change.entityId, change.userId);
+        await delete(
+          change.entityId, change.userId,
+          source: source, // Pass the source to prevent re-queuing
+        );
         _logger.info('Applied external delete for entity ${change.entityId}');
     }
   }

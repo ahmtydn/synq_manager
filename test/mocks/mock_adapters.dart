@@ -13,6 +13,9 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   final _changeController = StreamController<ChangeDetail<T>>.broadcast();
   int _schemaVersion = 0;
 
+  /// When true, prevents push/patch/delete from emitting changes.
+  bool silent = false;
+
   /// A function to deserialize JSON into an entity of type T.
   final T Function(Map<String, dynamic>)? fromJson;
 
@@ -52,15 +55,17 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   @override
   Future<void> push(T item, String userId) async {
     _storage.putIfAbsent(userId, () => {})[item.id] = item;
-    _changeController.add(
-      ChangeDetail(
-        entityId: item.id,
-        userId: userId,
-        type: SyncOperationType.update,
-        timestamp: DateTime.now(),
-        data: item,
-      ),
-    );
+    if (!silent) {
+      _changeController.add(
+        ChangeDetail(
+          entityId: item.id,
+          userId: userId,
+          type: SyncOperationType.update,
+          timestamp: DateTime.now(),
+          data: item,
+        ),
+      );
+    }
   }
 
   @override
@@ -77,15 +82,17 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
     final patchedItem = fromJson!(json);
     _storage.putIfAbsent(userId, () => {})[id] = patchedItem;
 
-    _changeController.add(
-      ChangeDetail(
-        entityId: id,
-        userId: userId,
-        type: SyncOperationType.update,
-        timestamp: DateTime.now(),
-        data: patchedItem,
-      ),
-    );
+    if (!silent) {
+      _changeController.add(
+        ChangeDetail(
+          entityId: id,
+          userId: userId,
+          type: SyncOperationType.update,
+          timestamp: DateTime.now(),
+          data: patchedItem,
+        ),
+      );
+    }
     return patchedItem;
   }
 
@@ -93,15 +100,17 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   Future<bool> delete(String id, String userId) async {
     final item = _storage[userId]?.remove(id);
     if (item != null) {
-      _changeController.add(
-        ChangeDetail(
-          entityId: id,
-          userId: userId,
-          type: SyncOperationType.delete,
-          timestamp: DateTime.now(),
-          data: item,
-        ),
-      );
+      if (!silent) {
+        _changeController.add(
+          ChangeDetail(
+            entityId: id,
+            userId: userId,
+            type: SyncOperationType.delete,
+            timestamp: DateTime.now(),
+            data: item,
+          ),
+        );
+      }
       return true;
     }
     return false;
@@ -157,6 +166,11 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
     _pendingOps.clear();
     _metadata.clear();
     await _changeController.close();
+  }
+
+  /// Helper to simulate an external change for testing.
+  void emitChange(ChangeDetail<T> change) {
+    _changeController.add(change);
   }
 
   @override
@@ -361,6 +375,9 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
   final _changeController = StreamController<ChangeDetail<T>>.broadcast();
   final List<String> _failedIds = [];
 
+  /// When true, prevents push/patch/delete from emitting changes.
+  bool silent = false;
+
   /// A function to deserialize JSON into an entity of type T.
   final T Function(Map<String, dynamic>)? fromJson;
 
@@ -396,15 +413,17 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
       throw NetworkException('Simulated push failure for ${item.id}');
     }
     _remoteStorage.putIfAbsent(userId, () => {})[item.id] = item;
-    _changeController.add(
-      ChangeDetail(
-        entityId: item.id,
-        userId: userId,
-        type: SyncOperationType.update,
-        timestamp: DateTime.now(),
-        data: item,
-      ),
-    );
+    if (!silent) {
+      _changeController.add(
+        ChangeDetail(
+          entityId: item.id,
+          userId: userId,
+          type: SyncOperationType.update,
+          timestamp: DateTime.now(),
+          data: item,
+        ),
+      );
+    }
     return item;
   }
 
@@ -436,14 +455,16 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
     if (!connected) throw Exception('No connection');
     final item = _remoteStorage[userId]?.remove(id);
     if (item != null) {
-      _changeController.add(
-        ChangeDetail(
-          entityId: id,
-          userId: userId,
-          type: SyncOperationType.delete,
-          timestamp: DateTime.now(),
-        ),
-      );
+      if (!silent) {
+        _changeController.add(
+          ChangeDetail(
+            entityId: id,
+            userId: userId,
+            type: SyncOperationType.delete,
+            timestamp: DateTime.now(),
+          ),
+        );
+      }
     }
   }
 
@@ -475,6 +496,11 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
 
   @override
   Stream<ChangeDetail<T>>? get changeStream => _changeController.stream;
+
+  /// Helper to simulate an external change for testing.
+  void emitChange(ChangeDetail<T> change) {
+    _changeController.add(change);
+  }
 
   /// Closes the stream controller. Call this in test tearDown.
   @override

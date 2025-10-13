@@ -67,6 +67,12 @@ abstract class SynqObserver<T extends SyncableEntity> {
     ConflictResolution<T> resolution,
   ) {}
 
+  /// Called when an external change is detected from a local or remote adapter.
+  ///
+  /// This hook is called at the beginning of the change handling process,
+  /// before any deduplication or processing logic is applied.
+  void onExternalChange(ChangeDetail<T> change, DataSource source) {}
+
   /// Called before a user switch is attempted.
   void onUserSwitchStart(
     String? oldUserId,
