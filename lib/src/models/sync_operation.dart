@@ -1,7 +1,42 @@
+import 'dart:convert';
+
 import 'package:synq_manager/synq_manager.dart';
 
 /// Represents a single operation (create, update, delete) to be synchronized.
 class SyncOperation<T extends SyncableEntity> {
+  /// Creates a [SyncOperation] from a map.
+  ///
+  /// Requires a `fromJsonT` function to deserialize the nested entity data.
+  factory SyncOperation.fromMap(
+    Map<String, dynamic> map,
+    T Function(Map<String, dynamic> json) fromJsonT,
+  ) {
+    return SyncOperation<T>(
+      id: map['id'] as String,
+      userId: map['userId'] as String,
+      entityId: map['entityId'] as String,
+      type: SyncOperationType.values.byName(map['type'] as String),
+      data: map['data'] != null
+          ? fromJsonT(map['data'] as Map<String, dynamic>)
+          : null,
+      delta: map['delta'] != null
+          ? Map<String, dynamic>.from(map['delta'] as Map<String, dynamic>)
+          : null,
+      timestamp: DateTime.fromMillisecondsSinceEpoch(map['timestamp'] as int),
+      retryCount: map['retryCount'] as int? ?? 0,
+    );
+  }
+
+  /// Creates a [SyncOperation] from a JSON string.
+  factory SyncOperation.fromJson(
+    String source,
+    T Function(Map<String, dynamic> json) fromJsonT,
+  ) =>
+      SyncOperation.fromMap(
+        json.decode(source) as Map<String, dynamic>,
+        fromJsonT,
+      );
+
   /// Creates a [SyncOperation].
   const SyncOperation({
     required this.id,
@@ -79,6 +114,23 @@ class SyncOperation<T extends SyncableEntity> {
   String toString() {
     return 'SyncOperation(id: $id, type: ${type.name}, entityId: $entityId, userId: $userId, retryCount: $retryCount)';
   }
+
+  /// Converts the operation to a map representation.
+  Map<String, dynamic> toMap() {
+    return <String, dynamic>{
+      'id': id,
+      'userId': userId,
+      'entityId': entityId,
+      'type': type.name,
+      'data': data?.toMap(),
+      'delta': delta,
+      'timestamp': timestamp.millisecondsSinceEpoch,
+      'retryCount': retryCount,
+    };
+  }
+
+  /// Converts the operation to a JSON string.
+  String toJson() => json.encode(toMap());
 }
 
 /// The type of a synchronization operation.
