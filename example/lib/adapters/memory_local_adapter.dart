@@ -9,6 +9,7 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   final Map<String, List<SyncOperation<T>>> _pendingOps = {};
   final Map<String, SyncMetadata> _metadata = {};
   final _changeController = StreamController<ChangeDetail<T>>.broadcast();
+  int _schemaVersion = 0;
 
   final T Function(Map<String, dynamic>) fromJson;
 
@@ -267,6 +268,39 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
         ..clear()
         ..addAll(backupStorage);
       rethrow;
+    }
+  }
+
+  @override
+  Future<int> getStoredSchemaVersion() async {
+    return _schemaVersion;
+  }
+
+  @override
+  Future<void> setStoredSchemaVersion(int version) async {
+    _schemaVersion = version;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAllRawData({String? userId}) async {
+    final items = await getAll(userId: userId);
+    return items.map((item) => item.toJson()).toList();
+  }
+
+  @override
+  Future<void> overwriteAllRawData(
+    List<Map<String, dynamic>> data, {
+    String? userId,
+  }) async {
+    if (userId != null) {
+      _storage[userId]?.clear();
+    } else {
+      _storage.clear();
+    }
+
+    for (final rawItem in data) {
+      final item = fromJson(rawItem);
+      _storage.putIfAbsent(item.userId, () => {})[item.id] = item;
     }
   }
 }

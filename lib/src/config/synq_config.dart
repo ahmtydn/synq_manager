@@ -1,76 +1,95 @@
+import 'package:synq_manager/src/migration/migration.dart';
+import 'package:synq_manager/src/models/user_switch_strategy.dart';
 import 'package:synq_manager/synq_manager.dart';
 
-/// Strategies available when switching between users.
-enum UserSwitchStrategy {
-  /// Clear local data and fetch fresh from remote.
-  clearAndFetch,
+/// A handler for migration errors.
+typedef MigrationErrorHandler = Future<void> Function(
+    Object error, StackTrace stackTrace,);
 
-  /// Sync current user's data before switching.
-  syncThenSwitch,
-
-  /// Prompt the user if there's unsynced data.
-  promptIfUnsyncedData,
-
-  /// Keep local data as-is.
-  keepLocal,
-}
-
-/// Configuration for SynqManager behavior.
+/// Configuration for [SynqManager].
 class SynqConfig<T extends SyncableEntity> {
-  /// Creates a sync configuration.
+  /// Creates a configuration object for [SynqManager].
   const SynqConfig({
-    this.autoSyncInterval = const Duration(minutes: 5),
+    this.autoSyncInterval = const Duration(minutes: 15),
     this.autoStartSync = false,
     this.maxRetries = 3,
-    this.retryDelay = const Duration(seconds: 5),
+    this.retryDelay = const Duration(seconds: 30),
     this.batchSize = 50,
     this.defaultConflictResolver,
-    this.defaultUserSwitchStrategy = UserSwitchStrategy.promptIfUnsyncedData,
-    this.defaultSyncDirection = SyncDirection.pushThenPull,
+    this.defaultUserSwitchStrategy = UserSwitchStrategy.syncThenSwitch,
     this.syncTimeout = const Duration(minutes: 2),
     this.enableLogging = false,
     this.initialUserId,
+    this.defaultSyncDirection = SyncDirection.pushThenPull,
+    this.schemaVersion = 1,
+    this.migrations = const [],
+    this.onMigrationError,
   });
 
-  /// Creates default configuration.
-  factory SynqConfig.defaultConfig() => SynqConfig<T>();
+  /// A default configuration with sensible production values.
+  factory SynqConfig.defaultConfig() => const SynqConfig();
 
-  /// Interval between automatic sync operations.
+  /// The interval for automatic background synchronization.
   final Duration autoSyncInterval;
 
-  /// Whether to automatically start auto-sync for all users on initialization.
-  /// When true, auto-sync will start automatically for all users that have
-  /// data in local storage after the manager is initialized.
+  /// Whether to automatically start auto-sync for all users with local data
+  /// upon initialization.
   final bool autoStartSync;
 
-  /// Maximum number of retry attempts for failed operations.
+  /// The maximum number of times a failed sync operation will be retried.
   final int maxRetries;
 
-  /// Delay between retry attempts.
+  /// The base delay before retrying a failed operation.
+  /// The actual delay may increase with exponential backoff.
   final Duration retryDelay;
 
-  /// Number of operations to sync in a single batch.
+  /// The number of operations to process in a single batch during sync.
   final int batchSize;
 
-  /// Default conflict resolver. Can be overridden per-sync.
+  /// The default conflict resolver to use if none is provided per-operation.
+  /// If null, [LastWriteWinsResolver] is used.
   final SyncConflictResolver<T>? defaultConflictResolver;
 
-  /// Default strategy for user switching.
+  /// The default strategy to use when switching users.
   final UserSwitchStrategy defaultUserSwitchStrategy;
 
-  /// Default direction for synchronization.
-  final SyncDirection defaultSyncDirection;
-
-  /// Timeout for sync operations.
+  /// The maximum duration for a single sync cycle before it times out.
   final Duration syncTimeout;
 
-  /// Whether to enable logging.
+  /// Whether to enable detailed logging.
   final bool enableLogging;
 
-  /// Optional initial user ID to set upon initialization.
+  /// The user ID to target for the initial auto-sync if [autoStartSync] is
+  /// true. If null, SynqManager will discover all users with local data.
   final String? initialUserId;
 
-  /// Creates a copy with modified fields.
+  /// The default direction for synchronization.
+  final SyncDirection defaultSyncDirection;
+
+  /// The current version of the data schema.
+  ///
+  /// When the app is initialized, this version is compared against the version
+  /// stored in the local database. If the config version is higher, the
+  /// provided [migrations] will be run.
+  final int schemaVersion;
+
+  /// A list of [Migration] classes to be run when the [schemaVersion] is
+  /// incremented.
+  ///
+  /// The manager will automatically find the correct migration path from the
+  /// stored version to the target [schemaVersion].
+  final List<Migration> migrations;
+
+  /// A callback to handle failures during schema migration.
+  ///
+  /// If a migration fails, this handler is invoked. If null, the error is
+  /// rethrown, which will likely crash the application, preventing it from
+  /// running with a corrupted database. You can provide a handler to
+  /// implement a custom recovery strategy, like clearing all local data.
+  final MigrationErrorHandler? onMigrationError;
+
+  /// Creates a copy of this config but with the given fields replaced with
+  /// the new values.
   SynqConfig<T> copyWith({
     Duration? autoSyncInterval,
     bool? autoStartSync,
@@ -79,10 +98,13 @@ class SynqConfig<T extends SyncableEntity> {
     int? batchSize,
     SyncConflictResolver<T>? defaultConflictResolver,
     UserSwitchStrategy? defaultUserSwitchStrategy,
-    SyncDirection? defaultSyncDirection,
     Duration? syncTimeout,
     bool? enableLogging,
     String? initialUserId,
+    SyncDirection? defaultSyncDirection,
+    int? schemaVersion,
+    List<Migration>? migrations,
+    MigrationErrorHandler? onMigrationError,
   }) {
     return SynqConfig<T>(
       autoSyncInterval: autoSyncInterval ?? this.autoSyncInterval,
@@ -94,10 +116,13 @@ class SynqConfig<T extends SyncableEntity> {
           defaultConflictResolver ?? this.defaultConflictResolver,
       defaultUserSwitchStrategy:
           defaultUserSwitchStrategy ?? this.defaultUserSwitchStrategy,
-      defaultSyncDirection: defaultSyncDirection ?? this.defaultSyncDirection,
       syncTimeout: syncTimeout ?? this.syncTimeout,
       enableLogging: enableLogging ?? this.enableLogging,
       initialUserId: initialUserId ?? this.initialUserId,
+      defaultSyncDirection: defaultSyncDirection ?? this.defaultSyncDirection,
+      schemaVersion: schemaVersion ?? this.schemaVersion,
+      migrations: migrations ?? this.migrations,
+      onMigrationError: onMigrationError ?? this.onMigrationError,
     );
   }
 }

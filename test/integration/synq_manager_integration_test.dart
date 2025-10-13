@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:synq_manager/src/models/user_switch_strategy.dart';
 import 'package:synq_manager/synq_manager.dart';
 
 import '../mocks/mock_adapters.dart';
@@ -70,7 +71,8 @@ void main() {
     });
 
     setUp(() async {
-      localAdapter = MockLocalAdapter<TestEntity>();
+      localAdapter =
+          MockLocalAdapter<TestEntity>(fromJson: TestEntity.fromJson);
       remoteAdapter = MockRemoteAdapter<TestEntity>();
       connectivityChecker = MockConnectivityChecker();
       events.clear();

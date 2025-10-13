@@ -1,70 +1,67 @@
-/// Base class for all SynqManager-specific exceptions.
-abstract class SynqException implements Exception {
-  /// Creates a SynqException with a message and optional stack trace.
-  SynqException(this.message, [this.stackTrace]);
+import 'package:synq_manager/src/models/syncable_entity.dart';
 
-  /// The error message.
+/// Base exception for all SynqManager related errors.
+abstract class SynqException implements Exception {
+  /// A descriptive message for the exception.
+  String get message;
+}
+
+/// Exception thrown for network-related issues.
+class NetworkException extends SynqException {
+  /// Creates a [NetworkException].
+  NetworkException(this.message);
+
+  @override
   final String message;
 
-  /// Optional stack trace.
+  @override
+  String toString() => 'NetworkException: $message';
+}
+
+/// Exception thrown when a schema migration fails.
+class MigrationException extends SynqException {
+  /// Creates a [MigrationException].
+  MigrationException(this.message);
+
+  @override
+  final String message;
+
+  @override
+  String toString() => 'MigrationException: $message';
+}
+
+/// Exception thrown when a user switch operation is rejected by a strategy.
+class UserSwitchException<T extends SyncableEntity> extends SynqException {
+  /// Creates a [UserSwitchException].
+  UserSwitchException(this.oldUserId, this.newUserId, this.message);
+
+  /// The user ID being switched from.
+  final String? oldUserId;
+
+  /// The user ID being switched to.
+  final String newUserId;
+
+  @override
+  final String message;
+
+  @override
+  String toString() => 'UserSwitchException: $message';
+}
+
+/// Exception thrown by adapters during their operations.
+class AdapterException extends SynqException {
+  /// Creates an [AdapterException].
+  AdapterException(this.adapterName, this.message, [this.stackTrace]);
+
+  /// The name of the adapter that threw the exception.
+  final String adapterName;
+
+  @override
+  final String message;
+
+  /// The stack trace associated with the error, if available.
   final StackTrace? stackTrace;
 
   @override
-  String toString() => '$runtimeType: $message';
-}
-
-/// Exception thrown when network-related errors occur.
-class NetworkException extends SynqException {
-  /// Creates a network exception.
-  NetworkException(super.message, [super.stackTrace]);
-}
-
-/// Exception thrown when a data conflict is detected.
-class ConflictException extends SynqException {
-  /// Creates a conflict exception with context.
-  ConflictException(this.context, String message, [StackTrace? stackTrace])
-      : super(message, stackTrace);
-
-  /// Context object related to the conflict.
-  final Object context;
-}
-
-/// Exception thrown by adapters during data operations.
-class AdapterException extends SynqException {
-  /// Creates an adapter exception.
-  AdapterException(this.adapterType, String message, [StackTrace? stackTrace])
-      : super(message, stackTrace);
-
-  /// Type of adapter that threw the exception.
-  final String adapterType;
-}
-
-/// Exception thrown during user switching operations.
-class UserSwitchException extends SynqException {
-  /// Creates a user switch exception.
-  UserSwitchException(
-    this.oldUserId,
-    this.newUserId,
-    String message, [
-    StackTrace? stackTrace,
-  ]) : super(message, stackTrace);
-
-  /// Previous user ID.
-  final String? oldUserId;
-
-  /// New user ID.
-  final String newUserId;
-}
-
-/// Exception thrown when data validation fails.
-class ValidationException extends SynqException {
-  /// Creates a validation exception with optional validation errors.
-  ValidationException(
-    super.message, [
-    this.validationErrors,
-    super.stackTrace,
-  ]);
-
-  /// Map of field names to validation error messages.
-  final Map<String, dynamic>? validationErrors;
+  String toString() => 'AdapterException($adapterName): $message';
 }

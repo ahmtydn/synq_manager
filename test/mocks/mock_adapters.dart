@@ -3,10 +3,17 @@ import 'dart:async';
 import 'package:synq_manager/synq_manager.dart';
 
 class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
+  MockLocalAdapter({this.fromJson});
+
   final Map<String, Map<String, T>> _storage = {};
+  final Map<String, Map<String, Map<String, dynamic>>> _rawStorage = {};
   final Map<String, List<SyncOperation<T>>> _pendingOps = {};
   final Map<String, SyncMetadata> _metadata = {};
   final _changeController = StreamController<ChangeDetail<T>>.broadcast();
+  int _schemaVersion = 0;
+
+  /// A function to deserialize JSON into an entity of type T.
+  final T Function(Map<String, dynamic>)? fromJson;
 
   @override
   String get name => 'MockLocalAdapter';
@@ -273,6 +280,49 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   /// Helper to directly add an item to the mock storage for test setup.
   void addLocalItem(String userId, T item) {
     _storage.putIfAbsent(userId, () => {})[item.id] = item;
+  }
+
+  @override
+  Future<int> getStoredSchemaVersion() async {
+    return _schemaVersion;
+  }
+
+  @override
+  Future<void> setStoredSchemaVersion(int version) async {
+    _schemaVersion = version;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAllRawData({String? userId}) async {
+    // Prioritize raw storage if it has data, otherwise use regular storage.
+    if (_rawStorage.isNotEmpty) {
+      if (userId != null) {
+        return _rawStorage[userId]?.values.toList() ?? [];
+      }
+      return _rawStorage.values.expand((map) => map.values).toList();
+    }
+    final items = await getAll(userId: userId);
+    return items.map((item) => item.toJson()).toList();
+  }
+
+  @override
+  Future<void> overwriteAllRawData(
+    List<Map<String, dynamic>> data, {
+    String? userId,
+  }) async {
+    if (userId != null && userId.isNotEmpty) {
+      _rawStorage[userId]?.clear();
+    } else {
+      _rawStorage.clear();
+    }
+
+    // For migration tests, store the raw data directly to avoid re-serialization
+    // that could interfere with test assertions.
+    for (final rawItem in data) {
+      final itemUserId = rawItem['userId'] as String? ?? '';
+      final itemId = rawItem['id'] as String? ?? '';
+      _rawStorage.putIfAbsent(itemUserId, () => {})[itemId] = rawItem;
+    }
   }
 }
 

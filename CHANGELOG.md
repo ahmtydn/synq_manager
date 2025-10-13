@@ -31,7 +31,7 @@
 - ♻️ **Adapter Naming**: `LocalAdapter` and `RemoteAdapter` `name` property is now dynamic, based on the class's runtime type.
 
 ### Documentation
-- 📝 **Enhanced README**: Major updates to `README.md` to document the new reactive query APIs (`watchAll`, `watchById`) and the new `SynqObserver` pattern with clear examples.
+- 📝 **Enhanced README**: Major updates to `README.md` to document the new reactive query APIs, the `SynqObserver` pattern, and the new Schema Migration framework with clear examples.
 - 📖 **Example README**: Updated the example app's `README.md` to reflect its new reactive architecture.
 - 📝 **Event & Observer Clarity**: Added detailed descriptions and `toString()` methods to all `SyncEvent` classes for easier debugging.
 
@@ -39,6 +39,7 @@
 - 💄 **Code Formatting**: Enforced an 80-character line length across the project for better readability.
 
 ### Test
+- ✅ **Migration Tests**: Added a comprehensive test suite for the schema migration framework, covering single-step, multi-step, and failure scenarios.
 - ✅ **Middleware Tests**: Added comprehensive tests for `SynqMiddleware`, covering all hooks like `transformBeforeSave`, `afterSync`, and `onConflict`.
 - ✅ **User Prompt Resolver Tests**: Added tests for `UserPromptResolver` covering all resolution scenarios.
 - ✅ **Sync Event Tests**: Added tests to verify the `toString()` output of all `SyncEvent` subclasses.

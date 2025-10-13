@@ -1,40 +1,9 @@
 import 'dart:async';
 
 import 'package:crypto/crypto.dart';
-import 'package:rxdart/rxdart.dart';
-import 'package:synq_manager/src/adapters/local_adapter.dart';
-import 'package:synq_manager/src/adapters/remote_adapter.dart';
-import 'package:synq_manager/src/core/conflict_detector.dart';
-import 'package:synq_manager/src/core/queue_manager.dart';
-import 'package:synq_manager/src/core/sync_engine.dart';
-import 'package:synq_manager/src/core/synq_observer.dart';
-import 'package:synq_manager/src/events/conflict_event.dart';
-import 'package:synq_manager/src/events/data_change_event.dart';
-import 'package:synq_manager/src/events/initial_sync_event.dart';
-import 'package:synq_manager/src/events/sync_event.dart';
-import 'package:synq_manager/src/events/user_switch_event.dart';
-import 'package:synq_manager/src/metrics/synq_metrics.dart';
-import 'package:synq_manager/src/middleware/synq_middleware.dart';
-import 'package:synq_manager/src/models/change_detail.dart';
-import 'package:synq_manager/src/models/sync_metadata.dart';
-import 'package:synq_manager/src/models/sync_operation.dart';
-import 'package:synq_manager/src/models/sync_options.dart';
-import 'package:synq_manager/src/models/sync_result.dart';
-import 'package:synq_manager/src/models/sync_scope.dart';
-import 'package:synq_manager/src/models/syncable_entity.dart';
-import 'package:synq_manager/src/models/user_switch_result.dart';
-import 'package:synq_manager/src/query/synq_query.dart';
-import 'package:synq_manager/src/resolvers/last_write_wins_resolver.dart';
-import 'package:synq_manager/src/resolvers/sync_conflict_resolver.dart';
-import 'package:synq_manager/src/utils/connectivity_checker.dart';
-import 'package:synq_manager/src/utils/logger.dart';
-import 'package:synq_manager/synq_manager.dart'
-    show
-        PaginatedResult,
-        PaginationConfig,
-        SynqConfig,
-        UserSwitchException,
-        UserSwitchStrategy;
+import 'package:synq_manager/src/core/migration_executor.dart';
+import 'package:synq_manager/src/models/user_switch_strategy.dart';
+import 'package:synq_manager/synq_manager.dart';
 import 'package:uuid/uuid.dart';
 
 /// Orchestrates bidirectional synchronization between local
@@ -201,6 +170,7 @@ class SynqManager<T extends SyncableEntity> {
 
     try {
       await _initializeAdapters();
+      await _runSchemaMigrations();
       _initializeSyncComponents();
       _initialized = true;
       await _setupAutoSyncIfEnabled();
@@ -768,6 +738,31 @@ class SynqManager<T extends SyncableEntity> {
   }
 
   // ========== Private Helper Methods ==========
+
+  Future<void> _runSchemaMigrations() async {
+    final executor = MigrationExecutor(
+      localAdapter: localAdapter,
+      migrations: _config.migrations,
+      targetVersion: _config.schemaVersion,
+      logger: _logger,
+      observers: _observers,
+    );
+
+    final needsMigration = await executor.needsMigration();
+    if (needsMigration) {
+      try {
+        await executor.execute();
+      } on Object catch (e, stack) {
+        _logger.error('Schema migration failed', stack);
+        executor.notifyObservers((o) => o.onMigrationError(e, stack));
+        if (_config.onMigrationError != null) {
+          await _config.onMigrationError!(e, stack);
+        } else {
+          rethrow;
+        }
+      }
+    }
+  }
 
   void _initializeInternalComponents() {
     // Components that can be initialized in constructor

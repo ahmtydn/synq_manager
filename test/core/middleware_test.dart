@@ -125,6 +125,24 @@ void main() {
       when(() => remoteAdapter.getSyncMetadata(any()))
           .thenAnswer((_) async => null);
 
+      // Stub migration methods to prevent initialization errors
+      when(() => localAdapter.getStoredSchemaVersion())
+          .thenAnswer((_) async => 1);
+      when(() => localAdapter.setStoredSchemaVersion(any()))
+          .thenAnswer((_) async {});
+      when(() => localAdapter.getAllRawData(userId: any(named: 'userId')))
+          .thenAnswer((_) async => []);
+      when(
+        () => localAdapter.overwriteAllRawData(
+          any(),
+          userId: any(named: 'userId'),
+        ),
+      ).thenAnswer((_) async {});
+      when(() => localAdapter.transaction(any()))
+          .thenAnswer((invocation) async {
+        return await (invocation.positionalArguments.first as Function)();
+      });
+
       // Stub middleware after adapters
       when(() => middleware.transformBeforeSave(any())).thenAnswer(
         (inv) async => inv.positionalArguments.first as TestEntity,

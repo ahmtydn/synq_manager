@@ -18,13 +18,15 @@ class TestEntity implements SyncableEntity {
   });
 
   factory TestEntity.fromJson(Map<String, dynamic> json) => TestEntity(
-        id: json['id'] as String,
-        userId: json['userId'] as String,
-        name: json['name'] as String,
-        value: json['value'] as int,
-        modifiedAt: DateTime.parse(json['modifiedAt'] as String),
-        createdAt: DateTime.parse(json['createdAt'] as String),
-        version: json['version'] as int,
+        id: json['id'] as String? ?? '',
+        userId: json['userId'] as String? ?? '',
+        name: json['name'] as String? ?? json['title'] as String? ?? '',
+        value: json['value'] as int? ?? 0,
+        modifiedAt: DateTime.tryParse(json['modifiedAt'] as String? ?? '') ??
+            DateTime(0),
+        createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+            DateTime(0),
+        version: json['version'] as int? ?? 1,
         isDeleted: json['isDeleted'] as bool? ?? false,
         completed: json['completed'] as bool? ?? false,
       );

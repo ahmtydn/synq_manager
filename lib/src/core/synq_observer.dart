@@ -1,3 +1,4 @@
+import 'package:synq_manager/src/models/user_switch_strategy.dart';
 import 'package:synq_manager/synq_manager.dart';
 
 /// An observer class to monitor operations within [SynqManager].
@@ -65,4 +66,16 @@ abstract class SynqObserver<T extends SyncableEntity> {
 
   /// Called after a user switch attempt has finished.
   void onUserSwitchEnd(UserSwitchResult result) {}
+
+  /// Called when the schema migration process is about to start.
+  void onMigrationStart(int fromVersion, int toVersion) {}
+
+  /// Called when the schema migration process has finished successfully.
+  void onMigrationEnd(int finalVersion) {}
+
+  /// Called when a migration fails.
+  ///
+  /// This is for observation purposes. To handle the error and define a
+  /// recovery strategy, use `SynqConfig.onMigrationError`.
+  void onMigrationError(Object error, StackTrace stackTrace) {}
 }

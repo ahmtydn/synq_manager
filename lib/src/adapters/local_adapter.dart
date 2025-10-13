@@ -109,6 +109,24 @@ abstract class LocalAdapter<T extends SyncableEntity> {
   /// Persist updated metadata for the user's sync state.
   Future<void> updateSyncMetadata(SyncMetadata metadata, String userId);
 
+  /// Retrieve the schema version currently stored in the database.
+  /// Should return 0 if no version is stored.
+  Future<int> getStoredSchemaVersion();
+
+  /// Persist the new schema version to the database.
+  Future<void> setStoredSchemaVersion(int version);
+
+  /// Fetch all data for a user as a list of raw maps.
+  /// This is used during schema migrations to avoid deserialization issues.
+  Future<List<Map<String, dynamic>>> getAllRawData({String? userId});
+
+  /// Overwrite all existing data with a new set of raw data maps.
+  /// This is used during schema migrations after transforming the data.
+  Future<void> overwriteAllRawData(
+    List<Map<String, dynamic>> data, {
+    String? userId,
+  });
+
   /// Executes a block of code within a transaction.
   ///
   /// All database operations within the `action` block are treated as a single
