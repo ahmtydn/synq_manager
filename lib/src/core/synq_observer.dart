@@ -27,4 +27,42 @@ abstract class SynqObserver<T extends SyncableEntity> {
   /// Called at the end of a `delete` operation.
   /// - [success]: Whether the deletion was successful.
   void onDeleteEnd(String id, String userId, {required bool success}) {}
+
+  /// Called when a synchronization cycle is about to start.
+  void onSyncStart(String userId) {}
+
+  /// Called when a synchronization cycle has finished.
+  void onSyncEnd(String userId, SyncResult result) {}
+
+  /// Called before an individual sync operation is attempted.
+  void onOperationStart(SyncOperation<T> operation) {}
+
+  /// Called after an individual sync operation succeeds.
+  void onOperationSuccess(SyncOperation<T> operation, T? result) {}
+
+  /// Called when an individual sync operation fails after all retries.
+  void onOperationFailure(
+    SyncOperation<T> operation,
+    Object error,
+    StackTrace stackTrace,
+  ) {}
+
+  /// Called when a conflict is detected between local and remote data.
+  void onConflictDetected(ConflictContext context, T? local, T? remote) {}
+
+  /// Called after a conflict has been resolved.
+  void onConflictResolved(
+    ConflictContext context,
+    ConflictResolution<T> resolution,
+  ) {}
+
+  /// Called before a user switch is attempted.
+  void onUserSwitchStart(
+    String? oldUserId,
+    String newUserId,
+    UserSwitchStrategy strategy,
+  ) {}
+
+  /// Called after a user switch attempt has finished.
+  void onUserSwitchEnd(UserSwitchResult result) {}
 }

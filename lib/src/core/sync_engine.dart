@@ -7,6 +7,7 @@ import 'package:synq_manager/src/adapters/remote_adapter.dart';
 import 'package:synq_manager/src/config/synq_config.dart';
 import 'package:synq_manager/src/core/conflict_detector.dart';
 import 'package:synq_manager/src/core/queue_manager.dart';
+import 'package:synq_manager/src/core/synq_observer.dart';
 import 'package:synq_manager/src/events/conflict_event.dart';
 import 'package:synq_manager/src/events/data_change_event.dart';
 import 'package:synq_manager/src/events/sync_event.dart';
@@ -48,6 +49,7 @@ class SyncEngine<T extends SyncableEntity> {
     required this.statusSubject,
     required this.metadataSubject,
     required this.middlewares,
+    required this.observers,
   });
 
   /// Adapter for local data storage operations.
@@ -86,6 +88,9 @@ class SyncEngine<T extends SyncableEntity> {
   /// Middleware chain for sync operations.
   final List<SynqMiddleware<T>> middlewares;
 
+  /// List of observers to notify of events.
+  final List<SynqObserver<T>> observers;
+
   final Set<String> _activeSyncs = <String>{};
   final Set<String> _pausedUsers = <String>{};
   final Set<String> _cancelledUsers = <String>{};
@@ -119,6 +124,7 @@ class SyncEngine<T extends SyncableEntity> {
     final errors = <Object>[];
 
     try {
+      _notifyObservers((o) => o.onSyncStart(userId));
       await queueManager.initializeUser(userId);
       final pendingOperations = queueManager.getPending(userId);
 
@@ -208,6 +214,7 @@ class SyncEngine<T extends SyncableEntity> {
         errors: errors,
       );
 
+      _notifyObservers((o) => o.onSyncEnd(userId, result));
       await _executeAfterSyncMiddleware(userId, result);
 
       eventController.add(
@@ -247,14 +254,22 @@ class SyncEngine<T extends SyncableEntity> {
         ),
       );
 
+      final result = SyncResult(
+        userId: userId,
+        syncedCount: completed,
+        failedCount: failed,
+        conflictsResolved: 0,
+        pendingOperations: queueManager.getPending(userId),
+        duration: stopwatch.elapsed,
+        wasCancelled: true,
+      );
+      _notifyObservers((o) => o.onSyncEnd(userId, result));
       return SyncResult(
         userId: userId,
         syncedCount: completed,
         failedCount: failed,
         conflictsResolved: 0,
-        pendingOperations: queueManager
-            .getPending(userId)
-            .cast<SyncOperation<SyncableEntity>>(),
+        pendingOperations: queueManager.getPending(userId),
         duration: stopwatch.elapsed,
         wasCancelled: true,
       );
@@ -285,14 +300,22 @@ class SyncEngine<T extends SyncableEntity> {
         ),
       );
 
+      final result = SyncResult(
+        userId: userId,
+        syncedCount: snapshot?.completedOperations ?? completed,
+        failedCount: snapshot?.failedOperations ?? failed,
+        conflictsResolved: conflictsResolved,
+        pendingOperations: queueManager.getPending(userId),
+        duration: stopwatch.elapsed,
+        errors: errors..add(TimeoutException('Sync timed out')),
+      );
+      _notifyObservers((o) => o.onSyncEnd(userId, result));
       return SyncResult(
         userId: userId,
         syncedCount: snapshot?.completedOperations ?? completed,
         failedCount: snapshot?.failedOperations ?? failed,
         conflictsResolved: conflictsResolved,
-        pendingOperations: queueManager
-            .getPending(userId)
-            .cast<SyncOperation<SyncableEntity>>(),
+        pendingOperations: queueManager.getPending(userId),
         duration: stopwatch.elapsed,
         errors: errors..add(TimeoutException('Sync timed out')),
       );
@@ -469,6 +492,7 @@ class SyncEngine<T extends SyncableEntity> {
               remoteData: remoteItem,
             ),
           );
+          _notifyConflictDetected(context, localItem, remoteItem);
           _notifyMiddlewareConflict(context, localItem, remoteItem);
         },
       );
@@ -539,6 +563,7 @@ class SyncEngine<T extends SyncableEntity> {
         }
 
         try {
+          _notifyObservers((o) => o.onOperationStart(operation));
           for (final middleware in middlewares) {
             await middleware.beforeOperation(operation);
           }
@@ -575,6 +600,8 @@ class SyncEngine<T extends SyncableEntity> {
 
           await queueManager.markCompleted(userId, operation.id);
           await _notifyAfterOperation(operation, remoteResult);
+          _notifyObservers(
+              (o) => o.onOperationSuccess(operation, remoteResult),);
           onCompleted(operation, remoteResult);
         } on Object catch (error, stackTrace) {
           // Implement per-operation retry logic
@@ -593,6 +620,9 @@ class SyncEngine<T extends SyncableEntity> {
             continue; // Continue to the next operation in the batch
           } else {
             await _notifyOperationError(operation, error, stackTrace);
+            _notifyObservers(
+              (o) => o.onOperationFailure(operation, error, stackTrace),
+            );
             onFailed(operation, error, stackTrace);
           }
         }
@@ -722,6 +752,7 @@ class SyncEngine<T extends SyncableEntity> {
         );
 
         onConflictResolved(resolution, conflictContext, localItem, remoteItem);
+        _notifyConflictResolved(conflictContext, resolution);
         conflictCount += 1;
       } else {
         final normalized = await _transformAfterFetch(remoteItem);
@@ -921,6 +952,38 @@ class SyncEngine<T extends SyncableEntity> {
         : AdapterException('remote', error.toString(), stackTrace);
     for (final middleware in middlewares) {
       await middleware.onOperationError(operation, synqError);
+    }
+  }
+
+  void _notifyConflictDetected(
+    ConflictContext context,
+    T? localItem,
+    T remoteItem,
+  ) {
+    logger.debug(
+      'Conflict detected: ${context.type} for entity ${context.entityId}',
+    );
+    _notifyObservers(
+        (o) => o.onConflictDetected(context, localItem, remoteItem),);
+  }
+
+  void _notifyConflictResolved(
+    ConflictContext context,
+    ConflictResolution<T> resolution,
+  ) {
+    logger.debug(
+      'Conflict resolved for ${context.entityId} with ${resolution.strategy}',
+    );
+    _notifyObservers((o) => o.onConflictResolved(context, resolution));
+  }
+
+  void _notifyObservers(void Function(SynqObserver<T> observer) action) {
+    for (final observer in observers) {
+      try {
+        action(observer);
+      } on Object catch (e, stack) {
+        logger.error('Observer ${observer.runtimeType} threw an error', stack);
+      }
     }
   }
 

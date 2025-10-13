@@ -597,6 +597,13 @@ class SynqManager<T extends SyncableEntity> {
     }
 
     final resolvedStrategy = strategy ?? _config.defaultUserSwitchStrategy;
+    _notifyObservers(
+      (o) => o.onUserSwitchStart(
+        oldUserId,
+        newUserId,
+        resolvedStrategy,
+      ),
+    );
     final hadUnsynced = await _hasUnsyncedData(oldUserId);
 
     try {
@@ -616,27 +623,33 @@ class SynqManager<T extends SyncableEntity> {
       _logger.info('User switched from $oldUserId to $newUserId');
 
       // Return the success result.
-      return UserSwitchResult.success(
+      final result = UserSwitchResult.success(
         previousUserId: oldUserId,
         newUserId: newUserId,
         unsyncedOperationsHandled: hadUnsynced ? 1 : 0,
       );
+      _notifyObservers((o) => o.onUserSwitchEnd(result));
+      return result;
     } on UserSwitchException catch (e) {
       // Handle specific user switch failures (e.g., promptIfUnsyncedData).
       _logger.warn('User switch rejected: ${e.message}');
-      return UserSwitchResult.failure(
+      final result = UserSwitchResult.failure(
         previousUserId: oldUserId,
         newUserId: newUserId,
         errorMessage: e.message,
       );
+      _notifyObservers((o) => o.onUserSwitchEnd(result));
+      return result;
     } on Object catch (e, stack) {
       // Handle any other unexpected errors during the switch.
       _logger.error('User switch failed', stack);
-      return UserSwitchResult.failure(
+      final result = UserSwitchResult.failure(
         previousUserId: oldUserId,
         newUserId: newUserId,
         errorMessage: 'User switch failed: $e',
       );
+      _notifyObservers((o) => o.onUserSwitchEnd(result));
+      return result;
     }
   }
 
@@ -785,6 +798,7 @@ class SynqManager<T extends SyncableEntity> {
       eventController: _eventController,
       statusSubject: _statusSubject,
       metadataSubject: _metadataSubject,
+      observers: _observers,
       middlewares: _middlewares,
     );
   }

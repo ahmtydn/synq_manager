@@ -71,6 +71,7 @@ void main() {
         statusSubject: statusSubject,
         metadataSubject: metadataSubject,
         middlewares: const [],
+        observers: const [],
       );
 
       when(() => localAdapter.updateSyncMetadata(any(), any()))

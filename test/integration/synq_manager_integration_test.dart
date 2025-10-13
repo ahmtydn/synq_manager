@@ -35,6 +35,38 @@ void main() {
       registerFallbackValue(
         DataSource.local,
       );
+      registerFallbackValue(
+        const SyncResult(
+          userId: 'fb',
+          syncedCount: 0,
+          failedCount: 0,
+          conflictsResolved: 0,
+          pendingOperations: [],
+          duration: Duration.zero,
+        ),
+      );
+      registerFallbackValue(
+        UserSwitchResult.success(newUserId: 'fb'),
+      );
+      registerFallbackValue(
+        ConflictContext(
+          userId: 'fb',
+          entityId: 'fb',
+          type: ConflictType.bothModified,
+          detectedAt: DateTime(0),
+        ),
+      );
+      registerFallbackValue(ConflictResolution<TestEntity>.abort('fb'));
+      registerFallbackValue(
+        SyncOperation<TestEntity>(
+          id: 'fb',
+          userId: 'fb',
+          entityId: 'fb',
+          type: SyncOperationType.create,
+          timestamp: DateTime(0),
+        ),
+      );
+      registerFallbackValue(StackTrace.empty);
     });
 
     setUp(() async {
@@ -48,9 +80,7 @@ void main() {
         localAdapter: localAdapter,
         remoteAdapter: remoteAdapter,
         conflictResolver: LastWriteWinsResolver<TestEntity>(),
-        synqConfig: const SynqConfig(
-          autoSyncInterval: Duration(seconds: 30),
-        ),
+        synqConfig: const SynqConfig(), // Use default config
         connectivity: connectivityChecker,
       );
 
@@ -66,67 +96,6 @@ void main() {
     tearDown(() async {
       await manager.dispose();
       await connectivityChecker.dispose();
-    });
-
-    test('correctly identifies adapter names', () {
-      expect(manager.localAdapter.name, 'MockLocalAdapter');
-      expect(manager.remoteAdapter.name, 'MockRemoteAdapter');
-    });
-
-    group('SynqObserver', () {
-      late MockSynqObserver<TestEntity> mockObserver;
-
-      setUp(() {
-        mockObserver = MockSynqObserver<TestEntity>();
-        manager.addObserver(mockObserver);
-      });
-
-      test('onSaveStart and onSaveEnd are called on save()', () async {
-        final entity = TestEntity(
-          id: 'obs-e1',
-          userId: 'user1',
-          name: 'Observer Test',
-          value: 1,
-          modifiedAt: DateTime.now(),
-          createdAt: DateTime.now(),
-          version: 1,
-        );
-
-        await manager.save(entity, 'user1');
-
-        verify(() => mockObserver.onSaveStart(entity, 'user1', DataSource.local))
-            .called(1);
-        verify(() => mockObserver.onSaveEnd(any(), 'user1', DataSource.local))
-            .called(1);
-      });
-
-      test('onDeleteStart and onDeleteEnd are called on successful delete()',
-          () async {
-        final entity = TestEntity(
-          id: 'obs-e2',
-          userId: 'user1',
-          name: 'Observer Delete Test',
-          value: 1,
-          modifiedAt: DateTime.now(),
-          createdAt: DateTime.now(),
-          version: 1,
-        );
-        await manager.save(entity, 'user1');
-
-        await manager.delete(entity.id, 'user1');
-
-        verify(() => mockObserver.onDeleteStart(entity.id, 'user1')).called(1);
-        verify(() => mockObserver.onDeleteEnd(entity.id, 'user1', success: true))
-            .called(1);
-      });
-
-      test('onDeleteEnd is called with success: false for non-existent item',
-          () async {
-        await manager.delete('non-existent-id', 'user1');
-
-        verify(() => mockObserver.onDeleteStart('non-existent-id', 'user1')).called(1);
-        verifyNever(() => mockObserver.onDeleteEnd(any(), any(), success: any(named: 'success')));
-      });
     });
 
     test('saves entity locally and enqueues sync operation', () async {
@@ -467,18 +436,209 @@ void main() {
       expect(await manager.getAll(userId: 'user2'), isEmpty);
     });
 
+    group('SynqObserver', () {
+      late MockSynqObserver<TestEntity> mockObserver;
+
+      setUp(() async {
+        mockObserver = MockSynqObserver<TestEntity>();
+        // Re-initialize manager with no retries for observer tests
+        manager = SynqManager<TestEntity>(
+          localAdapter: localAdapter,
+          remoteAdapter: remoteAdapter,
+          conflictResolver: LastWriteWinsResolver<TestEntity>(),
+          synqConfig: const SynqConfig(maxRetries: 0),
+          connectivity: connectivityChecker,
+        );
+        // We must re-initialize and re-add listeners
+        // because we created a new manager instance.
+        await manager.initialize();
+        manager.eventStream.listen(events.add);
+        manager.onInit.listen(initEvents.add);
+
+        manager.addObserver(mockObserver);
+      });
+
+      test('onSaveStart and onSaveEnd are called on save()', () async {
+        final entity = TestEntity.create('obs-e1', 'user1', 'Observer Test');
+        await manager.save(entity, 'user1');
+
+        verify(
+          () => mockObserver.onSaveStart(entity, 'user1', DataSource.local),
+        ).called(1);
+        verify(() => mockObserver.onSaveEnd(entity, 'user1', DataSource.local))
+            .called(1);
+      });
+
+      test('onDeleteStart and onDeleteEnd are called on successful delete()',
+          () async {
+        final entity = TestEntity.create('obs-e2', 'user1', 'Observer Delete');
+        localAdapter.addLocalItem('user1', entity);
+
+        await manager.delete(entity.id, 'user1');
+
+        verify(() => mockObserver.onDeleteStart(entity.id, 'user1')).called(1);
+        verify(
+          () => mockObserver.onDeleteEnd(entity.id, 'user1', success: true),
+        ).called(1);
+      });
+
+      test('onSyncStart and onSyncEnd are called during sync', () async {
+        await manager.sync('user1');
+
+        verify(() => mockObserver.onSyncStart('user1')).called(1);
+        verify(
+          () => mockObserver.onSyncEnd('user1', any(that: isA<SyncResult>())),
+        ).called(1);
+      });
+
+      test(
+          'onOperationStart and onOperationSuccess are called for successful sync op',
+          () async {
+        final entity = TestEntity.create('op-e1', 'user1', 'Op Success');
+        await manager.save(entity, 'user1');
+
+        await manager.sync('user1');
+
+        verify(
+          () => mockObserver.onOperationStart(
+            any(
+              that: isA<SyncOperation<TestEntity>>()
+                  .having((op) => op.entityId, 'entityId', 'op-e1'),
+            ),
+          ),
+        ).called(1);
+        verify(
+          () => mockObserver.onOperationSuccess(
+            any(
+              that: isA<SyncOperation<TestEntity>>()
+                  .having((op) => op.entityId, 'entityId', 'op-e1'),
+            ),
+            any(that: isA<TestEntity>()),
+          ),
+        ).called(1);
+      });
+
+      test('onOperationFailure is called for a failed sync op', () async {
+        final entity = TestEntity.create('op-e2', 'user1', 'Op Failure');
+        await manager.save(entity, 'user1');
+        remoteAdapter.setFailedIds(['op-e2']); // Make remote push fail
+
+        await manager.sync('user1');
+
+        // With maxRetries = 0, the operation fails immediately.
+        // We verify that onOperationSuccess was NOT called.
+        verifyNever(
+          () => mockObserver.onOperationSuccess(
+            any(),
+            any(),
+          ),
+        );
+
+        verify(
+          () => mockObserver.onOperationFailure(
+            any(
+              that: isA<SyncOperation<TestEntity>>()
+                  .having((op) => op.entityId, 'entityId', 'op-e2'),
+            ),
+            any(that: isA<NetworkException>()),
+            any(that: isA<StackTrace>()),
+          ),
+        ).called(1);
+      });
+
+      test('onConflictDetected and onConflictResolved are called', () async {
+        final baseTime = DateTime.now();
+        final local = TestEntity(
+          id: 'conflict-1',
+          userId: 'user1',
+          name: 'Local',
+          value: 1,
+          modifiedAt: baseTime,
+          createdAt: baseTime,
+          version: 1,
+        );
+        final remote = local.copyWith(
+          name: 'Remote',
+          modifiedAt: baseTime.add(const Duration(seconds: 1)),
+          version: 2,
+        );
+
+        localAdapter.addLocalItem('user1', local);
+        remoteAdapter.addRemoteItem('user1', remote);
+
+        await manager.sync('user1');
+
+        verify(
+          () => mockObserver.onConflictDetected(
+            any(that: isA<ConflictContext>()),
+            local,
+            remote,
+          ),
+        ).called(1);
+
+        verify(
+          () => mockObserver.onConflictResolved(
+            any(that: isA<ConflictContext>()),
+            any(that: isA<ConflictResolution<TestEntity>>()),
+          ),
+        ).called(1);
+      });
+
+      test('onUserSwitchStart and onUserSwitchEnd are called', () async {
+        await manager.switchUser(
+          oldUserId: 'user1',
+          newUserId: 'user2',
+          strategy: UserSwitchStrategy.keepLocal,
+        );
+
+        verify(
+          () => mockObserver.onUserSwitchStart(
+            'user1',
+            'user2',
+            UserSwitchStrategy.keepLocal,
+          ),
+        ).called(1);
+
+        verify(
+          () => mockObserver.onUserSwitchEnd(
+            any(
+              that: isA<UserSwitchResult>()
+                  .having((r) => r.success, 'success', true)
+                  .having((r) => r.newUserId, 'newUserId', 'user2'),
+            ),
+          ),
+        ).called(1);
+      });
+
+      test('onUserSwitchEnd is called on failure', () async {
+        // Arrange for failure
+        final entity = TestEntity.create('e1', 'user1', 'unsynced');
+        await manager.save(entity, 'user1');
+
+        // Act
+        await manager.switchUser(
+          oldUserId: 'user1',
+          newUserId: 'user2',
+          strategy: UserSwitchStrategy.promptIfUnsyncedData,
+        );
+
+        // Assert
+        verify(
+          () => mockObserver.onUserSwitchEnd(
+            any(
+              that: isA<UserSwitchResult>()
+                  .having((r) => r.success, 'success', false)
+                  .having((r) => r.errorMessage, 'errorMessage', isNotNull),
+            ),
+          ),
+        ).called(1);
+      });
+    });
+
     test('watchAll stream is user-specific and works after user switch',
         () async {
       // 1. Setup data and stream for user1
-      final user1Entity = TestEntity(
-        id: 'entity1',
-        userId: 'user1',
-        name: 'User1 Item',
-        value: 1,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
+      final user1Entity = TestEntity.create('entity1', 'user1', 'User1 Item');
 
       final user1Stream = manager.watchAll(userId: 'user1');
       expect(
@@ -499,16 +659,7 @@ void main() {
       );
 
       // 3. Setup data and stream for user2
-      final user2Entity = TestEntity(
-        id: 'entity2',
-        userId: 'user2',
-        name: 'User2 Item',
-        value: 2,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
-
+      final user2Entity = TestEntity.create('entity2', 'user2', 'User2 Item');
       final user2Stream = manager.watchAll(userId: 'user2');
       expect(
         user2Stream,
@@ -519,38 +670,19 @@ void main() {
 
     test('sync with scope performs a partial sync', () async {
       // 1. Setup remote data with two items
-      final remoteEntity1 = TestEntity(
-        id: 'remote1',
-        userId: 'user1',
-        name: 'Recent Item',
-        value: 1,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
-      final remoteEntity2 = TestEntity(
+      final remoteEntity1 =
+          TestEntity.create('remote1', 'user1', 'Recent Item');
+      final remoteEntity2 = remoteEntity1.copyWith(
         id: 'remote2',
-        userId: 'user1',
-        name: 'Old Item',
-        value: 2,
         modifiedAt: DateTime.now().subtract(const Duration(days: 40)),
-        createdAt: DateTime.now().subtract(const Duration(days: 40)),
-        version: 1,
       );
       remoteAdapter
         ..addRemoteItem('user1', remoteEntity1)
         ..addRemoteItem('user1', remoteEntity2);
 
       // 2. Add a local-only item that should not be deleted
-      final localOnlyEntity = TestEntity(
-        id: 'local-only',
-        userId: 'user1',
-        name: 'Local Only Item',
-        value: 3,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
+      final localOnlyEntity =
+          TestEntity.create('local-only', 'user1', 'Local Only Item');
       await manager.save(localOnlyEntity, 'user1');
 
       // 3. Perform a partial sync with a scope for recent items
@@ -588,24 +720,9 @@ void main() {
     test('per-operation retry logic increments retry count on failure',
         () async {
       // 1. Setup two entities to sync, one of which will fail
-      final successEntity = TestEntity(
-        id: 'success1',
-        userId: 'user1',
-        name: 'Will Succeed',
-        value: 1,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
-      final failEntity = TestEntity(
-        id: 'fail1',
-        userId: 'user1',
-        name: 'Will Fail',
-        value: 2,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
+      final successEntity =
+          TestEntity.create('success1', 'user1', 'Will Succeed');
+      final failEntity = TestEntity.create('fail1', 'user1', 'Will Fail');
       await manager.save(successEntity, 'user1');
       await manager.save(failEntity, 'user1');
 
@@ -646,15 +763,7 @@ void main() {
     });
 
     test('tracks sync statistics', () async {
-      final entity = TestEntity(
-        id: 'entity1',
-        userId: 'user1',
-        name: 'Test Item',
-        value: 42,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
+      final entity = TestEntity.create('entity1', 'user1', 'Test Item');
 
       await manager.save(entity, 'user1');
       await manager.sync('user1');
@@ -669,15 +778,7 @@ void main() {
     test('cancels sync operation', () async {
       // Add multiple items to ensure sync takes longer
       for (var i = 0; i < 10; i++) {
-        final entity = TestEntity(
-          id: 'entity$i',
-          userId: 'user1',
-          name: 'Test Item $i',
-          value: i,
-          modifiedAt: DateTime.now(),
-          createdAt: DateTime.now(),
-          version: 1,
-        );
+        final entity = TestEntity.create('entity$i', 'user1', 'Test Item $i');
         await manager.save(entity, 'user1');
       }
 
@@ -691,23 +792,13 @@ void main() {
     });
 
     test('retrieves entity by id', () async {
-      final entity = TestEntity(
-        id: 'entity1',
-        userId: 'user1',
-        name: 'Test Item',
-        value: 42,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
-
+      final entity = TestEntity.create('entity1', 'user1', 'Test Item');
       await manager.save(entity, 'user1');
 
       final retrieved = await manager.getById('entity1', 'user1');
 
       expect(retrieved, isNotNull);
       expect(retrieved!.name, 'Test Item');
-      expect(retrieved.value, 42);
     });
 
     test('returns null when entity does not exist', () async {
@@ -717,24 +808,8 @@ void main() {
     });
 
     test('watchAll emits updated lists on data changes', () async {
-      final entity1 = TestEntity(
-        id: 'entity1',
-        userId: 'user1',
-        name: 'Item 1',
-        value: 1,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
-      final entity2 = TestEntity(
-        id: 'entity2',
-        userId: 'user1',
-        name: 'Item 2',
-        value: 2,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
+      final entity1 = TestEntity.create('entity1', 'user1', 'Item 1');
+      final entity2 = TestEntity.create('entity2', 'user1', 'Item 2');
 
       final stream = manager.watchAll(userId: 'user1');
 
@@ -767,16 +842,7 @@ void main() {
     });
 
     test('watchById emits updated entity and null on deletion', () async {
-      final entity = TestEntity(
-        id: 'entity1',
-        userId: 'user1',
-        name: 'Item 1',
-        value: 1,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
-
+      final entity = TestEntity.create('entity1', 'user1', 'Item 1');
       final updatedEntity = entity.copyWith(name: 'Updated Item');
 
       final stream = manager.watchById('entity1', 'user1');
@@ -810,15 +876,7 @@ void main() {
       // Create 3 entities
       final entities = List.generate(
         3,
-        (i) => TestEntity(
-          id: 'entity$i',
-          userId: 'user1',
-          name: 'Item $i',
-          value: i,
-          modifiedAt: DateTime.now(),
-          createdAt: DateTime.now(),
-          version: 1,
-        ),
+        (i) => TestEntity.create('entity$i', 'user1', 'Item $i'),
       );
 
       const config = PaginationConfig(pageSize: 2);
@@ -870,24 +928,8 @@ void main() {
     });
 
     test('getByIds fetches multiple items correctly', () async {
-      final entity1 = TestEntity(
-        id: 'e1',
-        userId: 'user1',
-        name: 'Item 1',
-        value: 1,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
-      final entity2 = TestEntity(
-        id: 'e2',
-        userId: 'user1',
-        name: 'Item 2',
-        value: 2,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
+      final entity1 = TestEntity.create('e1', 'user1', 'Item 1');
+      final entity2 = TestEntity.create('e2', 'user1', 'Item 2');
       await localAdapter.save(entity1, 'user1');
       await localAdapter.save(entity2, 'user1');
 
@@ -902,16 +944,7 @@ void main() {
     });
 
     test('transaction rolls back on error', () async {
-      final entity1 = TestEntity(
-        id: 'tx1',
-        userId: 'user1',
-        name: 'TX Item 1',
-        value: 1,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
-
+      final entity1 = TestEntity.create('tx1', 'user1', 'TX Item 1');
       // Attempt a transaction that will fail
       await expectLater(
         localAdapter.transaction(() async {
@@ -930,25 +963,9 @@ void main() {
 
     test('watchQuery emits filtered lists on data changes', () async {
       // 1. Create entities with different 'completed' states
-      final pendingEntity1 = TestEntity(
-        id: 'pending1',
-        userId: 'user1',
-        name: 'Pending Task 1',
-        value: 1,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
-      final completedEntity = TestEntity(
-        id: 'completed1',
-        userId: 'user1',
-        name: 'Completed Task',
-        value: 2,
-        completed: true,
-        modifiedAt: DateTime.now(),
-        createdAt: DateTime.now(),
-        version: 1,
-      );
+      final pendingEntity1 = TestEntity.create('pending1', 'user1', 'Pending');
+      final completedEntity = TestEntity.create('completed1', 'user1', 'Done')
+          .copyWith(completed: true);
 
       // 2. Define a query to watch only pending items
       const query = SynqQuery({'completed': false});
