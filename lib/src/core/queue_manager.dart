@@ -41,14 +41,12 @@ class QueueManager<T extends SyncableEntity> {
   }
 
   /// Adds an operation to the queue.
-  Future<void> enqueue(String userId, SyncOperation<T> operation) async {
+  Future<void> enqueue(SyncOperation<T> operation) async {
+    final userId = operation.userId;
     final list = _pendingByUser.putIfAbsent(userId, () => [])..add(operation);
     await localAdapter.addPendingOperation(userId, operation);
     _controllers[userId]?.add(List.unmodifiable(list));
-    logger.debug(
-      'Queued operation ${operation.id} for user '
-      '$userId (${operation.type.name})',
-    );
+    logger.info('Enqueued operation: $operation');
   }
 
   /// Updates an existing operation in the queue.

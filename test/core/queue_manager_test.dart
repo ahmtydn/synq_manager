@@ -74,7 +74,7 @@ void main() {
       final stream = queueManager.watch('user1');
       final future = stream.first;
 
-      await queueManager.enqueue('user1', operation);
+      await queueManager.enqueue(operation);
 
       final emitted = await future;
       expect(emitted, hasLength(1));
@@ -91,7 +91,7 @@ void main() {
       );
 
       await queueManager.initializeUser('user1');
-      await queueManager.enqueue('user1', operation);
+      await queueManager.enqueue(operation);
 
       expect(queueManager.getPending('user1'), hasLength(1));
 
@@ -103,7 +103,6 @@ void main() {
     test('clears user queue', () async {
       await queueManager.initializeUser('user1');
       await queueManager.enqueue(
-        'user1',
         SyncOperation<TestEntity>(
           id: 'op1',
           userId: 'user1',
@@ -123,7 +122,6 @@ void main() {
       await queueManager.initializeUser('user2');
 
       await queueManager.enqueue(
-        'user1',
         SyncOperation<TestEntity>(
           id: 'op1',
           userId: 'user1',
@@ -134,7 +132,6 @@ void main() {
       );
 
       await queueManager.enqueue(
-        'user2',
         SyncOperation<TestEntity>(
           id: 'op2',
           userId: 'user2',
@@ -153,7 +150,6 @@ void main() {
     test('does not reinitialize if already initialized', () async {
       await queueManager.initializeUser('user1');
       await queueManager.enqueue(
-        'user1',
         SyncOperation<TestEntity>(
           id: 'op1',
           userId: 'user1',

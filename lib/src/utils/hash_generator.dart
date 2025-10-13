@@ -11,7 +11,7 @@ class HashGenerator {
   /// Generates a hash from a list of entities.
   String hashEntities<T extends SyncableEntity>(List<T> entities) {
     final sorted = List<T>.from(entities)..sort((a, b) => a.id.compareTo(b.id));
-    final jsonList = sorted.map((e) => e.toJson()).toList();
+    final jsonList = sorted.map((e) => e.toMap()).toList();
     return _hashJson(jsonList);
   }
 

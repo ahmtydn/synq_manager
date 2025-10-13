@@ -81,7 +81,7 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
     final existing = _remoteStorage[userId]?[id];
     if (existing == null) throw Exception('Entity not found for patching');
 
-    final json = existing.toJson()..addAll(delta);
+    final json = existing.toMap()..addAll(delta);
     final patchedItem = fromJson(json);
     _remoteStorage.putIfAbsent(userId, () => {})[id] = patchedItem;
     return patchedItem;

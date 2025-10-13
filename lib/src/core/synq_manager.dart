@@ -316,7 +316,7 @@ class SynqManager<T extends SyncableEntity> {
       throw ArgumentError.value(userId, 'userId', 'Must not be empty');
     }
 
-    _logger.debug('Attempting to save entity ${item.id} for user $userId...');
+    _logger.info('Saving entity ${item.id} for user $userId...');
 
     _notifyObservers((o) => o.onSaveStart(item, userId, DataSource.local));
 
@@ -354,11 +354,7 @@ class SynqManager<T extends SyncableEntity> {
         data: transformed,
         delta: delta, // Store the delta for the sync engine
       );
-      _logger.debug(
-        'Enqueuing ${operation.type.name} operation ${operation.id}',
-      );
-
-      await _queueManager.enqueue(userId, operation);
+      await _queueManager.enqueue(operation);
 
       _emitDataChangeEvent(
         userId: userId,
@@ -395,7 +391,7 @@ class SynqManager<T extends SyncableEntity> {
       throw ArgumentError.value(userId, 'userId', 'Must not be empty');
     }
 
-    _logger.debug('Attempting to delete entity $id for user $userId...');
+    _logger.info('Attempting to delete entity $id for user $userId...');
 
     _notifyObservers((o) => o.onDeleteStart(id, userId));
 
@@ -424,7 +420,7 @@ class SynqManager<T extends SyncableEntity> {
         entityId: id,
       );
 
-      await _queueManager.enqueue(userId, operation);
+      await _queueManager.enqueue(operation);
 
       _emitDataChangeEvent(
         userId: userId,
@@ -950,7 +946,7 @@ class SynqManager<T extends SyncableEntity> {
       delta: delta,
       entityId: entityId,
       timestamp: DateTime.now(),
-    );
+    )..logCreation(_logger, 'SynqManager._createOperation');
   }
 
   void _updateMetricsAndStatistics(SyncResult result, String userId) {
@@ -1147,7 +1143,7 @@ class SynqManager<T extends SyncableEntity> {
       return 'null';
     }
     try {
-      final payload = _extractDataPayload(data.toJson()).toString();
+      final payload = _extractDataPayload(data.toMap()).toString();
       return sha1.convert(payload.codeUnits).toString();
     } on Object catch (_) {
       return data.hashCode.toString();
@@ -1284,8 +1280,8 @@ class SynqManager<T extends SyncableEntity> {
   /// Compares entity data payloads excluding metadata fields.
   bool _areDataPayloadsEquivalent(T entity1, T entity2) {
     try {
-      final json1 = _extractDataPayload(entity1.toJson());
-      final json2 = _extractDataPayload(entity2.toJson());
+      final json1 = _extractDataPayload(entity1.toMap());
+      final json2 = _extractDataPayload(entity2.toMap());
 
       // Deep comparison via string representation
       // In production, consider using a proper deep equality package

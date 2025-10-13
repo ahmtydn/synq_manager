@@ -77,6 +77,17 @@ class SyncEngine<T extends SyncableEntity> {
     }
 
     final stopwatch = Stopwatch()..start();
+
+    // Reset counters at the start of each sync
+    _updateSnapshot(
+      userId,
+      (s) => s.copyWith(
+        syncedCount: 0,
+        conflictsResolved: 0,
+        failedOperations: 0,
+      ),
+    );
+
     _updateStatus(userId, SyncStatus.syncing);
     _notifyObservers((o) => o.onSyncStart(userId));
     await _notifyMiddlewares((m) => m.beforeSync(userId));
@@ -152,14 +163,31 @@ class SyncEngine<T extends SyncableEntity> {
     }
 
     logger.info(
-        'Pushing ${operationsToProcess.length} changes for user $userId...',);
+      'Pushing ${operationsToProcess.length} changes for user $userId...',
+    );
+
+    // Track processed operation IDs to avoid double-processing
+    final processedIds = <String>{};
+
     for (final operation in operationsToProcess) {
       if (_getSnapshot(userId).status != SyncStatus.syncing) break;
+
+      // Skip if already processed in this sync cycle
+      if (processedIds.contains(operation.id)) {
+        logger.debug('Operation ${operation.id} already processed, skipping.');
+        continue;
+      }
+
       await _processPendingOperation(operation);
+      processedIds.add(operation.id);
     }
   }
 
   Future<void> _processPendingOperation(SyncOperation<T> operation) async {
+    logger.info(
+      'SYNC: Processing operation ${operation.id} for entity ${operation.entityId}. '
+      'Current retryCount: ${operation.retryCount}',
+    );
     _notifyObservers((o) => o.onOperationStart(operation));
     await _notifyMiddlewares((m) => m.beforeOperation(operation));
 
@@ -190,9 +218,7 @@ class SyncEngine<T extends SyncableEntity> {
           );
       }
 
-      await queueManager.dequeue(
-        operation.id,
-      );
+      await queueManager.dequeue(operation.id);
       _updateSnapshot(
         operation.userId,
         (s) => s.copyWith(syncedCount: s.syncedCount + 1),
@@ -202,7 +228,7 @@ class SyncEngine<T extends SyncableEntity> {
         (m) => m.afterOperation(operation, remoteResult),
       );
     } on Object catch (e, stack) {
-      logger.error('Operation ${operation.id} failed', stack);
+      logger.error('SYNC: Operation $operation failed', stack);
       if (e is! NetworkException || operation.retryCount >= config.maxRetries) {
         _updateSnapshot(
           operation.userId,
@@ -218,12 +244,18 @@ class SyncEngine<T extends SyncableEntity> {
         await _notifyMiddlewares(
           (m) => m.onOperationError(operation, synqError),
         );
+        // Optionally dequeue permanently failed operations
+        // await queueManager.dequeue(operation.id);
       } else {
-        // It's a retryable network error, increment retry count
+        // It's a retryable network error, increment retry count ONCE
         final updatedOp =
             operation.copyWith(retryCount: operation.retryCount + 1);
         await queueManager.update(updatedOp);
-        logger.info('Retrying operation ${operation.id} later.');
+        logger.warn(
+          'SYNC: Operation ${operation.id} failed with network error. '
+          'Incrementing retry count from ${operation.retryCount} to ${updatedOp.retryCount}. '
+          'Will retry on next sync.',
+        );
       }
     }
   }
@@ -239,7 +271,7 @@ class SyncEngine<T extends SyncableEntity> {
     Future<void> updateMetadata() async {
       final items = await localAdapter.getAll(userId: userId);
       // Create a stable hash of the data content.
-      final contentToHash = items.map((e) => e.toJson().toString()).join(',');
+      final contentToHash = items.map((e) => e.toMap().toString()).join(',');
       final dataHash = contentToHash.isNotEmpty
           ? sha1.convert(contentToHash.codeUnits).toString()
           : '';

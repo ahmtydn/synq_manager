@@ -227,7 +227,7 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
       // Simple mock implementation for a 'completed' filter on Task
       if (query.filters.containsKey('completed')) {
         items = items.where((item) {
-          final json = item.toJson();
+          final json = item.toMap();
           return json['completed'] == query.filters['completed'];
         }).toList();
       }
@@ -289,7 +289,7 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   @override
   Future<List<Map<String, dynamic>>> getAllRawData({String? userId}) async {
     final items = await getAll(userId: userId);
-    return items.map((item) => item.toJson()).toList();
+    return items.map((item) => item.toMap()).toList();
   }
 
   @override

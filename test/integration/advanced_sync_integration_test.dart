@@ -106,6 +106,22 @@ void main() {
 
     test('per-operation retry logic increments retry count on failure',
         () async {
+      // Re-initialize manager with retries enabled for this specific test.
+      await manager.dispose();
+      localAdapter =
+          MockLocalAdapter<TestEntity>(fromJson: TestEntity.fromJson);
+      remoteAdapter =
+          MockRemoteAdapter<TestEntity>(fromJson: TestEntity.fromJson);
+      connectivityChecker = MockConnectivityChecker();
+      manager = SynqManager<TestEntity>(
+        localAdapter: localAdapter,
+        remoteAdapter: remoteAdapter,
+        conflictResolver: LastWriteWinsResolver<TestEntity>(),
+        synqConfig: const SynqConfig(maxRetries: 1),
+        connectivity: connectivityChecker,
+      );
+      await manager.initialize();
+
       final successEntity =
           TestEntity.create('success1', 'user1', 'Will Succeed');
       final failEntity = TestEntity.create('fail1', 'user1', 'Will Fail');
@@ -116,21 +132,44 @@ void main() {
 
       final result = await manager.sync('user1');
 
+      // Wait for any async operations to complete
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      // Check the result object first
       expect(result.syncedCount, 1);
       expect(result.failedCount, 0);
-      expect(result.pendingOperations, hasLength(1));
 
+      // Verify remote has the success entity
       final remoteItems = await remoteAdapter.fetchAll('user1');
       expect(remoteItems, hasLength(1));
       expect(remoteItems.first.id, 'success1');
 
-      final pendingOps = manager.getPendingOperations('user1');
-      expect(pendingOps, hasLength(1));
-      expect(pendingOps.first.entityId, 'fail1');
-      expect(pendingOps.first.retryCount, 1);
+      // Check pending operations - use result.pendingOperations which is a snapshot
+      expect(result.pendingOperations, hasLength(1));
+      expect(result.pendingOperations.first.entityId, 'fail1');
+      expect(result.pendingOperations.first.retryCount, 1);
 
+      // Debug: Check pending queue before second sync
+      final pendingBeforeSecondSync = manager.getPendingOperations('user1');
+      print(
+        '\nDEBUG: Pending operations BEFORE second sync: ${pendingBeforeSecondSync.length}',
+      );
+      for (final op in pendingBeforeSecondSync) {
+        print(
+          '  - ${op.entityId}: retryCount=${op.retryCount}, type=${op.type.name}, id=${op.id}',
+        );
+      }
+
+      // Clear the failed IDs and sync again
       remoteAdapter.setFailedIds([]);
       final secondResult = await manager.sync('user1');
+
+      print(
+        'DEBUG: Second sync result - syncedCount: ${secondResult.syncedCount}',
+      );
+      print(
+        'DEBUG: Second sync result - pendingOperations: ${secondResult.pendingOperations.length}',
+      );
 
       expect(secondResult.syncedCount, 1);
       expect(secondResult.pendingOperations, isEmpty);

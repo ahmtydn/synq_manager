@@ -20,8 +20,8 @@ abstract class SyncableEntity {
   /// A flag indicating if the entity is soft-deleted.
   bool get isDeleted;
 
-  /// Creates a JSON representation of the entity.
-  Map<String, dynamic> toJson();
+  /// Creates a map representation of the entity.
+  Map<String, dynamic> toMap();
 
   /// Creates a copy of the entity with updated fields.
   SyncableEntity copyWith();

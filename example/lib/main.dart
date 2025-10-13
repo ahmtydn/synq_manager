@@ -255,7 +255,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
       print('  Created: ${task.createdAt}');
       print('  Modified: ${task.modifiedAt}');
       print('  Deleted: ${task.isDeleted}');
-      print('  JSON: ${task.toJson()}');
+      print('  JSON: ${task.toMap()}');
       print('');
     }
 

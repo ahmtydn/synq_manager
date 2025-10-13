@@ -124,7 +124,7 @@ class Task implements SyncableEntity {
   });
 
   @override
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toMap() => {
     'id': id,
     'userId': userId,
     'title': title,
@@ -333,7 +333,7 @@ abstract class SyncableEntity {
   String get version;         // Version for conflict detection
   bool get isDeleted;         // Soft delete flag
 
-  Map<String, dynamic> toJson();
+  Map<String, dynamic> toMap();
   T copyWith({...});
 }
 ```

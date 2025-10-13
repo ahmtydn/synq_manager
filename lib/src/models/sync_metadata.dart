@@ -58,8 +58,8 @@ class SyncMetadata {
     );
   }
 
-  /// Converts to JSON format.
-  Map<String, dynamic> toJson() => {
+  /// Converts to a map.
+  Map<String, dynamic> toMap() => {
         'userId': userId,
         'lastSyncTime': lastSyncTime.toUtc().toIso8601String(),
         'dataHash': dataHash,

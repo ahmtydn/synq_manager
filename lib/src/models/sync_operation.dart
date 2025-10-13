@@ -12,7 +12,7 @@ class SyncOperation<T extends SyncableEntity> {
     this.data,
     this.delta,
     this.retryCount = 0,
-  });
+  }) : assert(retryCount >= 0, 'retryCount cannot be negative');
 
   /// A unique identifier for this operation.
   final String id;
@@ -65,6 +65,19 @@ class SyncOperation<T extends SyncableEntity> {
       timestamp: timestamp ?? this.timestamp,
       retryCount: retryCount ?? this.retryCount,
     );
+  }
+
+  /// Logs the creation of the operation for debugging purposes.
+  void logCreation(SynqLogger logger, String source) {
+    logger.debug(
+      '[$source] Created SyncOperation $id for entity $entityId. '
+      'Initial retryCount: $retryCount',
+    );
+  }
+
+  @override
+  String toString() {
+    return 'SyncOperation(id: $id, type: ${type.name}, entityId: $entityId, userId: $userId, retryCount: $retryCount)';
   }
 }
 

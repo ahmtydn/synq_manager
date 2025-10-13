@@ -231,7 +231,7 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
       // Mock implementation for a 'completed' filter on TestEntity
       if (query.filters.containsKey('completed')) {
         items = items.where((item) {
-          final json = item.toJson();
+          final json = item.toMap();
           return json['completed'] == query.filters['completed'];
         }).toList();
       }
@@ -307,7 +307,7 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
       return _rawStorage.values.expand((map) => map.values).toList();
     }
     final items = await getAll(userId: userId);
-    return items.map((item) => item.toJson()).toList();
+    return items.map((item) => item.toMap()).toList();
   }
 
   @override
@@ -404,7 +404,7 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
       throw Exception('Entity not found for patching in mock remote adapter.');
     }
 
-    final json = existing.toJson()..addAll(delta);
+    final json = existing.toMap()..addAll(delta);
     final patchedItem = fromJson!(json);
     _remoteStorage.putIfAbsent(userId, () => {})[id] = patchedItem;
     return patchedItem;

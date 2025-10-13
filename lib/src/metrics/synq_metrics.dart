@@ -48,8 +48,8 @@ class SynqMetrics {
   /// Number of user switches performed.
   int userSwitchCount;
 
-  /// Converts metrics to JSON format.
-  Map<String, dynamic> toJson() => {
+  /// Converts metrics to a map.
+  Map<String, dynamic> toMap() => {
         'total_sync_operations': totalSyncOperations,
         'successful_syncs': successfulSyncs,
         'failed_syncs': failedSyncs,

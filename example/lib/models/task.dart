@@ -48,7 +48,7 @@ class Task implements SyncableEntity {
   final bool isDeleted;
 
   @override
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toMap() => {
         'id': id,
         'userId': userId,
         'title': title,
@@ -108,7 +108,7 @@ class Task implements SyncableEntity {
   Map<String, dynamic>? diff(SyncableEntity oldVersion) {
     if (oldVersion is! Task) {
       // If types don't match, return the full object as a "diff"
-      return toJson()
+      return toMap()
         ..remove('id')
         ..remove('userId');
     }
