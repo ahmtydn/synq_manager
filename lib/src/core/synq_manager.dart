@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:crypto/crypto.dart';
 import 'package:synchronized/synchronized.dart';
+import 'package:synq_manager/src/core/isolate_helper.dart';
 import 'package:synq_manager/src/core/migration_executor.dart';
 import 'package:synq_manager/synq_manager.dart';
 import 'package:uuid/uuid.dart';
@@ -72,6 +73,7 @@ class SynqManager<T extends SyncableEntity> {
   final Map<String, String> _processedChangeKeys = {};
 
   late final QueueManager<T> _queueManager;
+  late final IsolateHelper _isolateHelper;
   late final ConflictDetector<T> _conflictDetector;
   final BehaviorSubject<SyncStatistics> _statisticsSubject =
       BehaviorSubject<SyncStatistics>.seeded(const SyncStatistics());
@@ -191,6 +193,7 @@ class SynqManager<T extends SyncableEntity> {
 
     try {
       await _initializeAdapters();
+      await _isolateHelper.initialize();
       await _runSchemaMigrations();
       _initializeSyncComponents();
       _initialized = true;
@@ -816,6 +819,7 @@ class SynqManager<T extends SyncableEntity> {
       await _statusSubject.close();
       await _statisticsSubject.close();
       await _queueManager.dispose();
+      _isolateHelper.dispose();
       await localAdapter.dispose();
 
       _logger.info('SynqManager disposed successfully.');
@@ -855,6 +859,7 @@ class SynqManager<T extends SyncableEntity> {
   void _initializeInternalComponents() {
     // Components that can be initialized in constructor
     _conflictDetector = ConflictDetector<T>();
+    _isolateHelper = IsolateHelper();
     _queueManager = QueueManager<T>(
       localAdapter: localAdapter,
       logger: _logger,
@@ -882,6 +887,7 @@ class SynqManager<T extends SyncableEntity> {
       statusSubject: _statusSubject,
       metadataSubject: _metadataSubject,
       observers: _observers,
+      isolateHelper: _isolateHelper,
       middlewares: _middlewares,
     );
   }

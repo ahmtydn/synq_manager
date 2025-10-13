@@ -7,17 +7,28 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:synq_manager/src/core/isolate_helper.dart';
 
 import 'package:synq_manager_example/main.dart';
 
 void main() {
+  setUpAll(() {
+    // Disable the long-lived isolate for widget tests to prevent timeouts.
+    IsolateHelper.disableForTests = true;
+  });
+
   testWidgets('Adds and displays a task', (WidgetTester tester) async {
     // Build our app and trigger a frame.
     await tester.pumpWidget(const MyApp());
 
     // The app starts with a loading indicator.
-    //We need to wait for it to finish.
-    await tester.pumpAndSettle();
+    // We use pump() instead of pumpAndSettle() to avoid timeouts caused by
+    // the periodic auto-sync timer in the background.
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // pumpAndSettle is better here to ensure the UI is stable. We give it a
+    // generous timeout to account for async initialization.
+    await tester.pumpAndSettle(
+        const Duration(seconds: 2), EnginePhase.sendSemanticsUpdate);
 
     // Verify that no tasks are displayed initially.
     expect(find.text('No tasks yet'), findsOneWidget);

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:crypto/crypto.dart';
+import 'package:synq_manager/src/core/isolate_helper.dart';
 import 'package:synq_manager/synq_manager.dart';
 
 /// The core engine that orchestrates the synchronization process.
@@ -19,6 +19,7 @@ class SyncEngine<T extends SyncableEntity> {
     required this.statusSubject,
     required this.metadataSubject,
     required this.observers,
+    required this.isolateHelper,
     required this.middlewares,
   });
 
@@ -57,6 +58,9 @@ class SyncEngine<T extends SyncableEntity> {
 
   /// The list of observers.
   final List<SynqObserver<T>> observers;
+
+  /// Helper for offloading work to a background isolate.
+  final IsolateHelper isolateHelper;
 
   /// The list of middlewares.
   final List<SynqMiddleware<T>> middlewares;
@@ -305,11 +309,10 @@ class SyncEngine<T extends SyncableEntity> {
     // Helper to update metadata at the end of the pull process.
     Future<void> updateMetadata() async {
       final items = await localAdapter.getAll(userId: userId);
-      // Create a stable hash of the data content.
-      final contentToHash = items.map((e) => e.toMap().toString()).join(',');
-      final dataHash = contentToHash.isNotEmpty
-          ? sha1.convert(contentToHash.codeUnits).toString()
-          : '';
+      // Offload hashing to a background isolate to prevent UI jank.
+      final dataHash = await isolateHelper.computeDataHash(
+        items.map((e) => e.toMap()).toList(),
+      );
 
       final newMetadata = SyncMetadata(
         userId: userId,

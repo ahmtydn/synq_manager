@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:synq_manager/src/core/isolate_helper.dart';
 import 'package:synq_manager/synq_manager.dart';
 
 import '../mocks/test_entity.dart';
@@ -14,6 +15,8 @@ class MockedRemoteAdapter<T extends SyncableEntity> extends Mock
 
 class MockedConnectivityChecker extends Mock implements ConnectivityChecker {}
 
+class MockedIsolateHelper extends Mock implements IsolateHelper {}
+
 void main() {
   group('SyncEngine', () {
     late MockedLocalAdapter<TestEntity> localAdapter;
@@ -23,6 +26,7 @@ void main() {
     late StreamController<SyncEvent<TestEntity>> eventController;
     late BehaviorSubject<SyncStatusSnapshot> statusSubject;
     late BehaviorSubject<SyncMetadata> metadataSubject;
+    late MockedIsolateHelper isolateHelper;
     late SyncEngine<TestEntity> syncEngine;
 
     setUpAll(() {
@@ -57,6 +61,7 @@ void main() {
       eventController = StreamController<SyncEvent<TestEntity>>.broadcast();
       statusSubject = BehaviorSubject<SyncStatusSnapshot>();
       metadataSubject = BehaviorSubject<SyncMetadata>();
+      isolateHelper = MockedIsolateHelper();
 
       syncEngine = SyncEngine<TestEntity>(
         localAdapter: localAdapter,
@@ -72,6 +77,7 @@ void main() {
         metadataSubject: metadataSubject,
         middlewares: const [],
         observers: const [],
+        isolateHelper: isolateHelper,
       );
 
       when(() => localAdapter.updateSyncMetadata(any(), any()))
@@ -97,6 +103,8 @@ void main() {
       when(() => remoteAdapter.push(any(), any()))
           .thenAnswer((i) async => i.positionalArguments.first as TestEntity);
       when(() => localAdapter.push(any(), any())).thenAnswer((_) async {});
+      when(() => isolateHelper.computeDataHash(any()))
+          .thenAnswer((_) async => 'testhash');
     });
 
     tearDown(() async {
