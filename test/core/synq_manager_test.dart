@@ -95,6 +95,7 @@ void main() {
           .thenAnswer((_) async {});
       when(() => remoteAdapter.updateSyncMetadata(any(), any()))
           .thenAnswer((_) async {});
+      when(() => localAdapter.markAsSynced(any())).thenAnswer((_) async {});
 
       manager = SynqManager<TestEntity>(
         localAdapter: localAdapter,
@@ -661,14 +662,106 @@ void main() {
 
           expect(
             errorManager.onError,
-            emits(isA<SyncErrorEvent>()
-                .having((e) => e.error, 'error', contains('Initialization')),),
+            emits(
+              isA<SyncErrorEvent>()
+                  .having((e) => e.error, 'error', contains('Initialization')),
+            ),
           );
 
           await expectLater(
             errorManager.initialize(),
             throwsA(isA<Exception>()),
           );
+        });
+      });
+
+      group('Concurrency', () {
+        test('handles concurrent push calls correctly', () async {
+          // Arrange
+          final entities = List.generate(
+            // Using a smaller number for faster tests
+            5,
+            (i) => TestEntity.create('e$i', userId, 'Item $i'),
+          );
+
+          when(() => localAdapter.getById(any(), any()))
+              .thenAnswer((_) async => null);
+          when(() => localAdapter.push(any(), any())).thenAnswer((_) async {});
+          when(() => localAdapter.addPendingOperation(any(), any()))
+              .thenAnswer((_) async {});
+
+          // Act: Fire all push calls concurrently without awaiting each one
+          final futures = entities.map((e) => manager.push(e, userId)).toList();
+          await Future.wait(futures);
+
+          // Assert
+          // Verify that push was called for each entity
+          verify(() => localAdapter.push(any(), userId)).called(5);
+          // Verify that an operation was enqueued for each entity
+          verify(() => localAdapter.addPendingOperation(userId, any()))
+              .called(5);
+        });
+
+        test('handles concurrent pushSync calls correctly', () async {
+          // Arrange
+          final entities = List.generate(
+            5,
+            (i) => TestEntity.create('e$i', userId, 'Item $i'),
+          );
+
+          // Mocks for the 'push' part
+          when(() => localAdapter.getById(any(), any()))
+              .thenAnswer((_) async => null);
+          when(() => localAdapter.push(any(), any())).thenAnswer((_) async {});
+          when(() => localAdapter.addPendingOperation(any(), any()))
+              .thenAnswer((_) async {});
+
+          // Mocks for the 'sync' part
+          when(() => remoteAdapter.push(any(), any())).thenAnswer(
+            (i) async => i.positionalArguments.first as TestEntity,
+          );
+
+          // Act: Fire all pushSync calls concurrently
+          final futures =
+              entities.map((e) => manager.pushAndSync(e, userId)).toList();
+          await Future.wait(futures);
+
+          // Assert
+          // Verify that local push was called for each entity
+          verify(() => localAdapter.push(any(), userId)).called(5);
+          // Verify that remote push was called for each entity
+          verify(() => remoteAdapter.push(any(), userId)).called(5);
+          // Verify that all operations were marked as synced
+          verify(() => localAdapter.markAsSynced(any())).called(5);
+        });
+
+        test('handles concurrent deleteSync calls correctly', () async {
+          // Arrange
+          final entities = List.generate(
+            5,
+            (i) => TestEntity.create('e$i', userId, 'Item $i'),
+          );
+          for (final e in entities) {
+            // Pre-populate local and remote storage
+            when(() => localAdapter.getById(e.id, userId))
+                .thenAnswer((_) async => e);
+          }
+          when(() => localAdapter.delete(any(), any()))
+              .thenAnswer((_) async => true);
+          when(() => localAdapter.addPendingOperation(any(), any()))
+              .thenAnswer((_) async {});
+          when(() => remoteAdapter.deleteRemote(any(), any()))
+              .thenAnswer((_) async {});
+
+          // Act: Fire all deleteSync calls concurrently
+          final futures =
+              entities.map((e) => manager.deleteAndSync(e.id, userId)).toList();
+          await Future.wait(futures);
+
+          // Assert
+          verify(() => localAdapter.delete(any(), userId)).called(5);
+          verify(() => remoteAdapter.deleteRemote(any(), userId)).called(5);
+          verify(() => localAdapter.markAsSynced(any())).called(5);
         });
       });
     });

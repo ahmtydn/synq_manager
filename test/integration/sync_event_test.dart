@@ -52,7 +52,7 @@ void main() {
         syncedCount: 8,
         failedCount: 2,
         conflictsResolved: 0,
-        pendingOperations: const [],
+        pendingOperations: [],
         duration: Duration.zero,
       );
       final event = SyncCompletedEvent(
