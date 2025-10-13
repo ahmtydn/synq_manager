@@ -38,13 +38,14 @@ void main() {
       // Register fallback values for custom types used with `any()` in mocktail.
       registerFallbackValue(
         TestEntity(
-            id: 'fb',
-            userId: 'fb',
-            name: 'fb',
-            value: 0,
-            modifiedAt: now,
-            createdAt: now,
-            version: 1,),
+          id: 'fb',
+          userId: 'fb',
+          name: 'fb',
+          value: 0,
+          modifiedAt: now,
+          createdAt: now,
+          version: 1,
+        ),
       );
 
       registerFallbackValue(
@@ -109,6 +110,8 @@ void main() {
       when(() => localAdapter.markAsSynced(any())).thenAnswer((_) async {});
       when(() => localAdapter.changeStream())
           .thenAnswer((_) => const Stream.empty());
+      when(() => localAdapter.name).thenReturn('MockedLocalAdapter');
+
       when(() => remoteAdapter.changeStream)
           .thenAnswer((_) => const Stream.empty());
       when(() => remoteAdapter.fetchAll(any(), scope: any(named: 'scope')))
@@ -116,6 +119,7 @@ void main() {
       when(() => remoteAdapter.isConnected()).thenAnswer((_) async => true);
 
       // Add stubs for metadata methods to prevent null-future errors
+      when(() => remoteAdapter.name).thenReturn('MockedRemoteAdapter');
       when(() => localAdapter.getSyncMetadata(any()))
           .thenAnswer((_) async => null);
       when(() => remoteAdapter.getSyncMetadata(any()))

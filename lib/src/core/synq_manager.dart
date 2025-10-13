@@ -7,6 +7,7 @@ import 'package:synq_manager/src/adapters/remote_adapter.dart';
 import 'package:synq_manager/src/core/conflict_detector.dart';
 import 'package:synq_manager/src/core/queue_manager.dart';
 import 'package:synq_manager/src/core/sync_engine.dart';
+import 'package:synq_manager/src/core/synq_observer.dart';
 import 'package:synq_manager/src/events/conflict_event.dart';
 import 'package:synq_manager/src/events/data_change_event.dart';
 import 'package:synq_manager/src/events/initial_sync_event.dart';
@@ -86,6 +87,7 @@ class SynqManager<T extends SyncableEntity> {
   final BehaviorSubject<SyncStatusSnapshot> _statusSubject =
       BehaviorSubject<SyncStatusSnapshot>();
   final List<SynqMiddleware<T>> _middlewares = [];
+  final List<SynqObserver<T>> _observers = [];
   final Map<String, Timer> _autoSyncTimers = {};
   final _metrics = SynqMetrics();
   final Map<String, String> _processedChangeKeys = {};
@@ -159,6 +161,17 @@ class SynqManager<T extends SyncableEntity> {
     }
     _middlewares.add(middleware);
     _logger.debug('Middleware added: ${middleware.runtimeType}');
+  }
+
+  /// Registers an observer to be notified of manager operations.
+  ///
+  /// Observers are notified in the order they are added.
+  void addObserver(SynqObserver<T> observer) {
+    if (_disposed) {
+      throw StateError('Cannot add observer after disposal');
+    }
+    _observers.add(observer);
+    _logger.debug('Observer added: ${observer.runtimeType}');
   }
 
   /// Initializes all internal components and establishes change subscriptions.
@@ -291,13 +304,22 @@ class SynqManager<T extends SyncableEntity> {
       throw ArgumentError.value(userId, 'userId', 'Must not be empty');
     }
 
+    _logger.debug('Attempting to save entity ${item.id} for user $userId...');
+
+    _notifyObservers((o) => o.onSaveStart(item, userId, DataSource.local));
+
     try {
       await _ensureUserInitialized(userId);
 
       final existing = await localAdapter.getById(item.id, userId);
       final isCreate = existing == null;
+      _logger.debug(
+        'Operation determined as ${isCreate ? 'create' : 'update'} '
+        'for entity ${item.id}',
+      );
 
       final transformed = await _applyPreSaveTransformations(item);
+      _logger.debug('Saving transformed entity ${item.id} to local adapter');
       await localAdapter.save(transformed, userId);
 
       final operation = _createOperation(
@@ -305,6 +327,9 @@ class SynqManager<T extends SyncableEntity> {
         type: isCreate ? SyncOperationType.create : SyncOperationType.update,
         entityId: transformed.id,
         data: transformed,
+      );
+      _logger.debug(
+        'Enqueuing ${operation.type.name} operation ${operation.id}',
       );
 
       await _queueManager.enqueue(userId, operation);
@@ -316,7 +341,10 @@ class SynqManager<T extends SyncableEntity> {
         source: DataSource.local,
       );
 
-      _logger.debug('Saved entity ${item.id} for user $userId');
+      _logger.info('Successfully saved entity ${item.id} for user $userId');
+      _notifyObservers(
+        (o) => o.onSaveEnd(transformed, userId, DataSource.local),
+      );
       return transformed;
     } on Object catch (e, stack) {
       _logger.error(
@@ -341,6 +369,10 @@ class SynqManager<T extends SyncableEntity> {
       throw ArgumentError.value(userId, 'userId', 'Must not be empty');
     }
 
+    _logger.debug('Attempting to delete entity $id for user $userId...');
+
+    _notifyObservers((o) => o.onDeleteStart(id, userId));
+
     try {
       await _ensureUserInitialized(userId);
 
@@ -353,7 +385,12 @@ class SynqManager<T extends SyncableEntity> {
       }
 
       final deleted = await localAdapter.delete(id, userId);
-      if (!deleted) return false;
+      if (!deleted) {
+        _logger.warn('Local adapter failed to delete entity $id');
+        _notifyObservers((o) => o.onDeleteEnd(id, userId, success: false));
+        return false;
+      }
+      _logger.debug('Deleted entity $id from local adapter');
 
       final operation = _createOperation(
         userId: userId,
@@ -370,7 +407,8 @@ class SynqManager<T extends SyncableEntity> {
         source: DataSource.local,
       );
 
-      _logger.debug('Deleted entity $id for user $userId');
+      _logger.info('Successfully deleted entity $id for user $userId');
+      _notifyObservers((o) => o.onDeleteEnd(id, userId, success: true));
       return true;
     } on Object catch (e, stack) {
       _logger.error('Failed to delete entity $id for user: $userId', stack);
@@ -622,6 +660,7 @@ class SynqManager<T extends SyncableEntity> {
       await _localChangeSubscription?.cancel();
       await _remoteChangeSubscription?.cancel();
       _processedChangeKeys.clear();
+      _observers.clear();
       await _eventController.close();
       await _statusSubject.close();
       await _queueManager.dispose();
@@ -646,8 +685,9 @@ class SynqManager<T extends SyncableEntity> {
   }
 
   Future<void> _initializeAdapters() async {
-    _logger.debug('Initializing local adapter');
+    _logger.debug('Initializing local adapter: ${localAdapter.name}');
     await localAdapter.initialize();
+    _logger.debug('Initializing remote adapter: ${remoteAdapter.name}');
   }
 
   void _initializeSyncComponents() {
@@ -1177,6 +1217,16 @@ class SynqManager<T extends SyncableEntity> {
       case SyncOperationType.delete:
         await delete(change.entityId, change.userId);
         _logger.info('Applied external delete for entity ${change.entityId}');
+    }
+  }
+
+  void _notifyObservers(void Function(SynqObserver<T> observer) action) {
+    for (final observer in _observers) {
+      try {
+        action(observer);
+      } on Object catch (e, stack) {
+        _logger.error('Observer ${observer.runtimeType} threw an error', stack);
+      }
     }
   }
 

@@ -2,6 +2,9 @@ import 'package:synq_manager/synq_manager.dart';
 
 /// Local storage adapter abstraction that provides access to offline data.
 abstract class LocalAdapter<T extends SyncableEntity> {
+  /// A descriptive name for the adapter (e.g., "Hive", "SQLite").
+  String get name;
+
   /// Initialize the local storage implementation
   /// (open boxes, create tables, etc.).
   Future<void> initialize();

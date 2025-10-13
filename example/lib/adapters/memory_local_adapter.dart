@@ -13,6 +13,9 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   final T Function(Map<String, dynamic>) fromJson;
 
   @override
+  String get name => 'MemoryLocalAdapter';
+
+  @override
   Future<void> initialize() async {
     // No initialization needed for in-memory storage
   }

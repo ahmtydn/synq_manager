@@ -56,6 +56,11 @@ void main() {
       await connectivityChecker.dispose();
     });
 
+    test('correctly identifies adapter names', () {
+      expect(manager.localAdapter.name, 'MockLocalAdapter');
+      expect(manager.remoteAdapter.name, 'MockRemoteAdapter');
+    });
+
     test('saves entity locally and enqueues sync operation', () async {
       expect(initEvents, hasLength(1));
       expect(initEvents.single.data, isEmpty);

@@ -9,6 +9,9 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   final _changeController = StreamController<ChangeDetail<T>>.broadcast();
 
   @override
+  String get name => 'MockLocalAdapter';
+
+  @override
   Future<void> initialize() async {
     // No-op for mock
   }
@@ -261,6 +264,9 @@ class MockRemoteAdapter<T extends SyncableEntity> implements RemoteAdapter<T> {
   bool connected = true;
   final _changeController = StreamController<ChangeDetail<T>>.broadcast();
   final List<String> _failedIds = [];
+
+  @override
+  String get name => 'MockRemoteAdapter';
 
   void setFailedIds(List<String> ids) => _failedIds
     ..clear()

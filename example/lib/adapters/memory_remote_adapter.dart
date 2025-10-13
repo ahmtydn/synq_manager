@@ -14,6 +14,9 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
   final bool _isConnected = true;
 
   @override
+  String get name => 'MemoryRemoteAdapter';
+
+  @override
   Future<List<T>> fetchAll(String userId, {SyncScope? scope}) async {
     if (!_isConnected) {
       throw Exception('No network connection');

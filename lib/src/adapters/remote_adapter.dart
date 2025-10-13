@@ -8,6 +8,9 @@ import 'package:synq_manager/src/models/syncable_entity.dart';
 
 /// Remote adapter abstraction for communicating with server-side data sources.
 abstract class RemoteAdapter<T extends SyncableEntity> {
+  /// A descriptive name for the adapter (e.g., "Firebase", "REST API").
+  String get name;
+
   /// Stream of changes that occur in the remote storage.
   /// Implementations should emit events when data changes externally
   /// (e.g., from another device or user).
