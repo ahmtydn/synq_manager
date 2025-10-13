@@ -36,7 +36,7 @@ class TaskListScreen extends StatefulWidget {
 class _TaskListScreenState extends State<TaskListScreen> {
   late SynqManager<Task> _manager;
   final String _currentUserId = 'user123';
-  List<Task> _tasks = [];
+  Stream<List<Task>>? _tasksStream;
   bool _isLoading = true;
   bool _isSyncing = false;
   String _syncStatus = 'Not synced';
@@ -70,11 +70,10 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
     await _manager.initialize();
 
-    // Listen to events
-    _manager.onDataChange.listen((event) {
-      print('Data changed: ${event.changeType} - ${event.data.title}');
-      unawaited(_loadTasks());
-    });
+    // Set up the reactive stream for the task list.
+    // The UI will now update automatically.
+    _tasksStream = _manager.watchAll(userId: _currentUserId);
+    unawaited(_updatePendingOperations());
 
     _manager.onSyncProgress.listen((event) {
       setState(() {
@@ -95,17 +94,14 @@ class _TaskListScreenState extends State<TaskListScreen> {
     // Start auto-sync
     _manager.startAutoSync(_currentUserId);
 
-    await _loadTasks();
+    setState(() {
+      _isLoading = false;
+    });
   }
 
-  Future<void> _loadTasks() async {
-    final tasks = await _manager.getAll(userId: _currentUserId);
+  Future<void> _updatePendingOperations() async {
     final snapshot = await _manager.getSyncSnapshot(_currentUserId);
-
     setState(() {
-      _tasks = tasks.where((t) => !t.isDeleted).toList()
-        ..sort((a, b) => b.modifiedAt.compareTo(a.modifiedAt));
-      _isLoading = false;
       _pendingOperations = snapshot.pendingOperations;
       if (snapshot.status == SyncStatus.idle) {
         _syncStatus = 'Synced';
@@ -124,7 +120,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
     );
 
     await _manager.save(task, _currentUserId);
-    await _loadTasks();
   }
 
   Future<void> _toggleTask(Task task) async {
@@ -135,12 +130,10 @@ class _TaskListScreenState extends State<TaskListScreen> {
     );
 
     await _manager.save(updated, _currentUserId);
-    await _loadTasks();
   }
 
   Future<void> _deleteTask(Task task) async {
     await _manager.delete(task.id, _currentUserId);
-    await _loadTasks();
   }
 
   Future<void> _syncNow() async {
@@ -174,7 +167,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
       setState(() {
         _isSyncing = false;
       });
-      await _loadTasks();
+      await _updatePendingOperations();
     }
   }
 
@@ -229,12 +222,14 @@ class _TaskListScreenState extends State<TaskListScreen> {
   Future<void> _printAllData() async {
     print('=== 🔍 DEBUG: ALL DATA ===');
     print('Current User ID: $_currentUserId');
-    print('Total Tasks: ${_tasks.length}');
     print('Pending Operations: $_pendingOperations');
     print('Sync Status: $_syncStatus');
     print('\n--- Tasks ---');
-    for (var i = 0; i < _tasks.length; i++) {
-      final task = _tasks[i];
+
+    final tasks = await _manager.getAll(userId: _currentUserId);
+    print('Total Tasks: ${tasks.length}');
+    for (var i = 0; i < tasks.length; i++) {
+      final task = tasks[i];
       print('[$i] Task:');
       print('  ID: ${task.id}');
       print('  Title: ${task.title}');
@@ -249,8 +244,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
     }
 
     // Get all tasks including deleted
-    final allTasks = await _manager.getAll(userId: _currentUserId);
-    final deletedTasks = allTasks.where((t) => t.isDeleted).toList();
+    final deletedTasks = tasks.where((t) => t.isDeleted).toList();
     if (deletedTasks.isNotEmpty) {
       print('--- Deleted Tasks (${deletedTasks.length}) ---');
       for (final task in deletedTasks) {
@@ -281,6 +275,16 @@ class _TaskListScreenState extends State<TaskListScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _navigateToDetail(Task task) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) =>
+            TaskDetailScreen(manager: _manager, taskId: task.id),
+      ),
+    );
   }
 
   @override
@@ -362,8 +366,25 @@ class _TaskListScreenState extends State<TaskListScreen> {
                 ),
                 // Task list
                 Expanded(
-                  child: _tasks.isEmpty
-                      ? Center(
+                  child: StreamBuilder<List<Task>>(
+                    stream: _tasksStream,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Text('Error: ${snapshot.error}'),
+                        );
+                      }
+                      final tasks = snapshot.data ?? [];
+                      final visibleTasks = tasks
+                          .where((t) => !t.isDeleted)
+                          .toList()
+                        ..sort((a, b) => b.modifiedAt.compareTo(a.modifiedAt));
+
+                      if (visibleTasks.isEmpty) {
+                        return Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -390,50 +411,55 @@ class _TaskListScreenState extends State<TaskListScreen> {
                               ),
                             ],
                           ),
-                        )
-                      : ListView.builder(
-                          itemCount: _tasks.length,
-                          itemBuilder: (context, index) {
-                            final task = _tasks[index];
-                            return Dismissible(
-                              key: Key(task.id),
-                              direction: DismissDirection.endToStart,
-                              background: Container(
-                                color: Colors.red,
-                                alignment: Alignment.centerRight,
-                                padding: const EdgeInsets.only(right: 16),
-                                child: const Icon(
-                                  Icons.delete,
-                                  color: Colors.white,
+                        );
+                      }
+
+                      return ListView.builder(
+                        itemCount: visibleTasks.length,
+                        itemBuilder: (context, index) {
+                          final task = visibleTasks[index];
+                          return Dismissible(
+                            key: Key(task.id),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              color: Colors.red,
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 16),
+                              child: const Icon(
+                                Icons.delete,
+                                color: Colors.white,
+                              ),
+                            ),
+                            onDismissed: (_) => _deleteTask(task),
+                            child: ListTile(
+                              onTap: () => _navigateToDetail(task),
+                              leading: Checkbox(
+                                value: task.completed,
+                                onChanged: (_) => _toggleTask(task),
+                              ),
+                              title: Text(
+                                task.title,
+                                style: TextStyle(
+                                  decoration: task.completed
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                  color: task.completed ? Colors.grey : null,
                                 ),
                               ),
-                              onDismissed: (_) => _deleteTask(task),
-                              child: ListTile(
-                                leading: Checkbox(
-                                  value: task.completed,
-                                  onChanged: (_) => _toggleTask(task),
-                                ),
-                                title: Text(
-                                  task.title,
-                                  style: TextStyle(
-                                    decoration: task.completed
-                                        ? TextDecoration.lineThrough
-                                        : null,
-                                    color: task.completed ? Colors.grey : null,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  'Modified: ${_formatDate(task.modifiedAt)}',
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.delete_outline),
-                                  onPressed: () => _deleteTask(task),
-                                ),
+                              subtitle: Text(
+                                'Modified: ${_formatDate(task.modifiedAt)}',
+                                style: const TextStyle(fontSize: 12),
                               ),
-                            );
-                          },
-                        ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: () => _deleteTask(task),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
               ],
             ),
@@ -444,16 +470,96 @@ class _TaskListScreenState extends State<TaskListScreen> {
       ),
     );
   }
+}
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
+/// A screen to display details for a single task, demonstrating `watchById`.
+class TaskDetailScreen extends StatelessWidget {
+  const TaskDetailScreen({
+    required this.manager,
+    required this.taskId,
+    super.key,
+  });
 
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-    if (diff.inDays < 1) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
+  final SynqManager<Task> manager;
+  final String taskId;
+  static const String _currentUserId = 'user123';
 
-    return '${date.day}/${date.month}/${date.year}';
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Task Details'),
+      ),
+      body: StreamBuilder<Task?>(
+        stream: manager.watchById(taskId, _currentUserId),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final task = snapshot.data;
+
+          if (task == null) {
+            return const Center(
+              child: Text(
+                'Task not found or has been deleted.',
+                style: TextStyle(fontSize: 16),
+              ),
+            );
+          }
+
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  task.title,
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Icon(
+                      task.completed
+                          ? Icons.check_box
+                          : Icons.check_box_outline_blank,
+                      color: task.completed ? Colors.green : Colors.grey,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      task.completed ? 'Completed' : 'Pending',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 16),
+                Text('ID: ${task.id}'),
+                const SizedBox(height: 8),
+                Text('Version: ${task.version}'),
+                const SizedBox(height: 8),
+                Text('Created: ${_formatDate(task.createdAt)}'),
+                const SizedBox(height: 8),
+                Text('Last Modified: ${_formatDate(task.modifiedAt)}'),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
+}
+
+String _formatDate(DateTime date) {
+  final now = DateTime.now();
+  final diff = now.difference(date);
+
+  if (diff.inMinutes < 1) return 'Just now';
+  if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+  if (diff.inDays < 1) return '${diff.inHours}h ago';
+  if (diff.inDays < 7) return '${diff.inDays}d ago';
+
+  return '${date.day}/${date.month}/${date.year}';
 }

@@ -291,6 +291,155 @@ void main() {
       expect(user2Items.first.name, 'User2 Item');
     });
 
+    test('switchUser with syncThenSwitch syncs old user data', () async {
+      // 1. Create unsynced data for user1
+      final user1Entity = TestEntity(
+        id: 'entity1',
+        userId: 'user1',
+        name: 'User1 Item to Sync',
+        value: 1,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+      await manager.save(user1Entity, 'user1');
+      expect(await manager.getPendingCount('user1'), 1);
+      expect(await remoteAdapter.fetchAll('user1'), isEmpty);
+
+      // 2. Switch to user2 with syncThenSwitch strategy
+      final switchResult = await manager.switchUser(
+        oldUserId: 'user1',
+        newUserId: 'user2',
+        strategy: UserSwitchStrategy.syncThenSwitch,
+      );
+
+      // 3. Assertions
+      expect(switchResult.success, isTrue);
+      expect(switchResult.newUserId, 'user2');
+
+      // Verify user1's data was synced to remote
+      final remoteItems = await remoteAdapter.fetchAll('user1');
+      expect(remoteItems, hasLength(1));
+      expect(remoteItems.first.name, 'User1 Item to Sync');
+
+      // Verify user1's pending queue is now empty
+      expect(await manager.getPendingCount('user1'), 0);
+    });
+
+    test('switchUser with clearAndFetch clears new user data', () async {
+      // 1. Add some local data for user2
+      final localUser2Entity = TestEntity(
+        id: 'local-entity',
+        userId: 'user2',
+        name: 'Local User2 Item',
+        value: 1,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+      await manager.save(localUser2Entity, 'user2');
+      expect(await manager.getAll(userId: 'user2'), hasLength(1));
+
+      // 2. Switch from user1 to user2 with clearAndFetch strategy
+      final switchResult = await manager.switchUser(
+        oldUserId: 'user1',
+        newUserId: 'user2',
+        strategy: UserSwitchStrategy.clearAndFetch,
+      );
+
+      // 3. Assertions
+      expect(switchResult.success, isTrue);
+
+      // Verify local data for user2 was cleared
+      final user2Items = await manager.getAll(userId: 'user2');
+      expect(user2Items, isEmpty);
+    });
+
+    test(
+        'switchUser with promptIfUnsyncedData throws error if data is unsynced',
+        () async {
+      // 1. Create unsynced data for user1
+      final user1Entity = TestEntity(
+        id: 'entity1',
+        userId: 'user1',
+        name: 'Unsynced Item',
+        value: 1,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+      await manager.save(user1Entity, 'user1');
+      expect(await manager.getPendingCount('user1'), 1);
+
+      // 2. Attempt to switch with prompt strategy
+      final switchResult = await manager.switchUser(
+        oldUserId: 'user1',
+        newUserId: 'user2',
+        strategy: UserSwitchStrategy.promptIfUnsyncedData,
+      );
+
+      // 3. Assertions
+      expect(switchResult.success, isFalse);
+      expect(switchResult.errorMessage, contains('Unsynced data present'));
+
+      // Verify data for user1 is still present and unsynced
+      expect(await manager.getPendingCount('user1'), 1);
+      final user1Items = await manager.getAll(userId: 'user1');
+      expect(user1Items, hasLength(1));
+      expect(user1Items.first.name, 'Unsynced Item');
+
+      // Verify we haven't switched to user2's context implicitly
+      expect(await manager.getAll(userId: 'user2'), isEmpty);
+    });
+
+    test('watchAll stream is user-specific and works after user switch',
+        () async {
+      // 1. Setup data and stream for user1
+      final user1Entity = TestEntity(
+        id: 'entity1',
+        userId: 'user1',
+        name: 'User1 Item',
+        value: 1,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+
+      final user1Stream = manager.watchAll(userId: 'user1');
+      expect(
+        user1Stream,
+        emitsInOrder([
+          isEmpty, // Initial empty list
+          (List<TestEntity> list) => list.first.name == 'User1 Item',
+        ]),
+      );
+
+      await manager.save(user1Entity, 'user1');
+
+      // 2. Switch user
+      await manager.switchUser(
+        oldUserId: 'user1',
+        newUserId: 'user2',
+        strategy: UserSwitchStrategy.keepLocal,
+      );
+
+      // 3. Setup data and stream for user2
+      final user2Entity = TestEntity(
+        id: 'entity2',
+        userId: 'user2',
+        name: 'User2 Item',
+        value: 2,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
+
+      final user2Stream = manager.watchAll(userId: 'user2');
+      expect(user2Stream,
+          emitsInOrder([isEmpty, (List<TestEntity> list) => list.length == 1]));
+      await manager.save(user2Entity, 'user2');
+    });
+
     test('tracks sync statistics', () async {
       final entity = TestEntity(
         id: 'entity1',
