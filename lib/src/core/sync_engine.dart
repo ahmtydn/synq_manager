@@ -16,6 +16,7 @@ import 'package:synq_manager/src/models/conflict_resolution.dart';
 import 'package:synq_manager/src/models/exceptions.dart';
 import 'package:synq_manager/src/models/sync_metadata.dart';
 import 'package:synq_manager/src/models/sync_operation.dart';
+import 'package:synq_manager/src/models/sync_options.dart';
 import 'package:synq_manager/src/models/sync_result.dart';
 import 'package:synq_manager/src/models/sync_scope.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
@@ -45,6 +46,7 @@ class SyncEngine<T extends SyncableEntity> {
     required this.connectivityChecker,
     required this.eventController,
     required this.statusSubject,
+    required this.metadataSubject,
     required this.middlewares,
   });
 
@@ -67,7 +69,7 @@ class SyncEngine<T extends SyncableEntity> {
   final SynqLogger logger;
 
   /// Configuration for sync behavior.
-  final SynqConfig config;
+  final SynqConfig<T> config;
 
   /// Checker for network connectivity.
   final ConnectivityChecker connectivityChecker;
@@ -77,6 +79,9 @@ class SyncEngine<T extends SyncableEntity> {
 
   /// Subject for sync status updates.
   final BehaviorSubject<SyncStatusSnapshot> statusSubject;
+
+  /// Subject for sync metadata updates.
+  final BehaviorSubject<SyncMetadata> metadataSubject;
 
   /// Middleware chain for sync operations.
   final List<SynqMiddleware<T>> middlewares;
@@ -97,7 +102,7 @@ class SyncEngine<T extends SyncableEntity> {
   Future<SyncResult> synchronize(
     String userId, {
     bool force = false,
-    SyncOptions? options,
+    SyncOptions<T>? options,
     SyncScope? scope,
   }) async {
     if (_activeSyncs.contains(userId)) {
@@ -135,48 +140,25 @@ class SyncEngine<T extends SyncableEntity> {
 
       await _ensureConnectivity(userId);
 
-      for (final middleware in middlewares) {
-        await middleware.beforeSync(userId);
+      await _executeBeforeSyncMiddleware(userId);
+
+      final syncDirection = options?.direction ?? config.defaultSyncDirection;
+
+      if (syncDirection == SyncDirection.pullThenPush) {
+        final pullResult = await _pullChanges(
+          userId,
+          force: force,
+          options: options,
+          scope: scope,
+          deadline: deadline,
+        );
+        conflictsResolved += pullResult;
       }
 
-      await _processPendingOperations(
-        userId,
-        pendingOperations,
-        options: options,
-        deadline: deadline,
-        onCompleted: (operation, result) {
-          completed += 1;
-          eventController.add(
-            SyncProgressEvent<T>(
-              userId: userId,
-              completed: completed,
-              total: pendingOperations.length,
-            ),
-          );
-          _updateStatus(
-            userId,
-            SyncStatus.syncing,
-            pendingOperations: queueManager.getPending(userId).length,
-            completedOperations: completed,
-            failedOperations: failed,
-          );
-        },
-        onFailed: (operation, error, stackTrace) {
-          // This path is now for non-retryable errors or exhausted retries.
-          failed += 1;
-          errors.add(error);
-          logger.warn(
-            'Operation ${operation.id} failed for user $userId: $error',
-          );
-          _updateStatus(
-            userId,
-            SyncStatus.syncing,
-            pendingOperations: queueManager.getPending(userId).length,
-            completedOperations: completed,
-            failedOperations: failed,
-          );
-        },
-      );
+      final pushResult = await _pushChanges(userId, options, deadline);
+      completed += pushResult.completed;
+      failed += pushResult.failed;
+      errors.addAll(pushResult.errors);
 
       if (_cancelledUsers.remove(userId)) {
         throw _SyncCancelledException();
@@ -185,37 +167,17 @@ class SyncEngine<T extends SyncableEntity> {
       final localMetadata = await localAdapter.getSyncMetadata(userId);
       final remoteMetadata = await remoteAdapter.getSyncMetadata(userId);
 
-      final shouldForce = force || (options?.forceFullSync ?? false);
-      final shouldSyncRemotely = shouldForce ||
-          pendingOperations.isNotEmpty ||
-          _shouldSynchronize(localMetadata, remoteMetadata);
-
-      _ensureNotTimedOut(deadline);
-
-      if (shouldSyncRemotely) {
-        final remoteItems = await remoteAdapter.fetchAll(userId, scope: scope);
-        final remoteSummary = await _reconcileRemoteItems(
+      if (syncDirection == SyncDirection.pushThenPull) {
+        final pullResult = await _pullChanges(
           userId,
-          remoteItems,
+          force: force,
+          options: options,
+          scope: scope,
           deadline: deadline,
-          resolveConflicts: options?.resolveConflicts ?? true,
-          isPartialSync: scope != null,
           localMetadata: localMetadata,
           remoteMetadata: remoteMetadata,
-          onConflictResolved: (resolution, context, localItem, remoteItem) {
-            conflictsResolved += 1;
-            eventController.add(
-              ConflictDetectedEvent<T>(
-                userId: userId,
-                context: context,
-                localData: localItem,
-                remoteData: remoteItem,
-              ),
-            );
-            _notifyMiddlewareConflict(context, localItem, remoteItem);
-          },
         );
-        conflictsResolved += remoteSummary.remoteConflicts;
+        conflictsResolved += pullResult;
       }
 
       final currentItems = await localAdapter.getAll(userId: userId);
@@ -227,6 +189,10 @@ class SyncEngine<T extends SyncableEntity> {
       );
       await localAdapter.updateSyncMetadata(metadata, userId);
       await remoteAdapter.updateSyncMetadata(metadata, userId);
+
+      if (!metadataSubject.isClosed) {
+        metadataSubject.add(metadata);
+      }
 
       stopwatch.stop();
 
@@ -242,9 +208,7 @@ class SyncEngine<T extends SyncableEntity> {
         errors: errors,
       );
 
-      for (final middleware in middlewares) {
-        await middleware.afterSync(userId, result);
-      }
+      await _executeAfterSyncMiddleware(userId, result);
 
       eventController.add(
         SyncCompletedEvent<T>(
@@ -397,6 +361,122 @@ class SyncEngine<T extends SyncableEntity> {
     );
   }
 
+  Future<void> _executeBeforeSyncMiddleware(String userId) async {
+    for (final middleware in middlewares) {
+      await middleware.beforeSync(userId);
+    }
+  }
+
+  Future<void> _executeAfterSyncMiddleware(
+    String userId,
+    SyncResult result,
+  ) async {
+    for (final middleware in middlewares) {
+      await middleware.afterSync(userId, result);
+    }
+  }
+
+  Future<_PushResult> _pushChanges(
+    String userId,
+    SyncOptions<T>? options,
+    DateTime? deadline,
+  ) async {
+    var completed = 0;
+    var failed = 0;
+    final errors = <Object>[];
+    final pendingOperations = queueManager.getPending(userId);
+
+    await _processPendingOperations(
+      userId,
+      pendingOperations,
+      options: options,
+      deadline: deadline,
+      onCompleted: (operation, result) {
+        completed += 1;
+        eventController.add(
+          SyncProgressEvent<T>(
+            userId: userId,
+            completed: completed,
+            total: pendingOperations.length,
+          ),
+        );
+        _updateStatus(
+          userId,
+          SyncStatus.syncing,
+          pendingOperations: queueManager.getPending(userId).length,
+          completedOperations: completed,
+          failedOperations: failed,
+        );
+      },
+      onFailed: (operation, error, stackTrace) {
+        failed += 1;
+        errors.add(error);
+        logger.warn(
+          'Operation ${operation.id} failed for user $userId: $error',
+        );
+        _updateStatus(
+          userId,
+          SyncStatus.syncing,
+          pendingOperations: queueManager.getPending(userId).length,
+          completedOperations: completed,
+          failedOperations: failed,
+        );
+      },
+    );
+
+    return _PushResult(completed: completed, failed: failed, errors: errors);
+  }
+
+  Future<int> _pullChanges(
+    String userId, {
+    required bool force,
+    required SyncOptions<T>? options,
+    required SyncScope? scope,
+    required DateTime? deadline,
+    SyncMetadata? localMetadata,
+    SyncMetadata? remoteMetadata,
+  }) async {
+    var conflictsResolved = 0;
+    final pendingOperations = queueManager.getPending(userId);
+
+    final lMeta = localMetadata ?? await localAdapter.getSyncMetadata(userId);
+    final rMeta = remoteMetadata ?? await remoteAdapter.getSyncMetadata(userId);
+
+    final shouldForce = force || (options?.forceFullSync ?? false);
+    final shouldSyncRemotely = shouldForce ||
+        pendingOperations.isNotEmpty ||
+        _shouldSynchronize(lMeta, rMeta);
+
+    _ensureNotTimedOut(deadline);
+
+    if (shouldSyncRemotely) {
+      final remoteItems = await remoteAdapter.fetchAll(userId, scope: scope);
+      final remoteSummary = await _reconcileRemoteItems(
+        userId,
+        remoteItems,
+        options: options,
+        deadline: deadline,
+        resolveConflicts: options?.resolveConflicts ?? true,
+        isPartialSync: scope != null,
+        localMetadata: lMeta,
+        remoteMetadata: rMeta,
+        onConflictResolved: (resolution, context, localItem, remoteItem) {
+          eventController.add(
+            ConflictDetectedEvent<T>(
+              userId: userId,
+              context: context,
+              localData: localItem,
+              remoteData: remoteItem,
+            ),
+          );
+          _notifyMiddlewareConflict(context, localItem, remoteItem);
+        },
+      );
+      conflictsResolved += remoteSummary.remoteConflicts;
+    }
+    return conflictsResolved;
+  }
+
   /// Cancels an ongoing synchronization process for a specific user.
   ///
   /// Sets the cancellation flag and completes any pending pause operations.
@@ -424,7 +504,7 @@ class SyncEngine<T extends SyncableEntity> {
   Future<void> _processPendingOperations(
     String userId,
     List<SyncOperation<T>> operations, {
-    required SyncOptions? options,
+    required SyncOptions<T>? options,
     required DateTime? deadline,
     required void Function(SyncOperation<T> operation, T? result) onCompleted,
     required void Function(
@@ -523,6 +603,7 @@ class SyncEngine<T extends SyncableEntity> {
   Future<_RemoteSyncSummary> _reconcileRemoteItems(
     String userId,
     List<T> remoteItems, {
+    required SyncOptions<T>? options,
     required bool resolveConflicts,
     required bool isPartialSync,
     required DateTime? deadline,
@@ -623,7 +704,10 @@ class SyncEngine<T extends SyncableEntity> {
       );
 
       if (conflictContext != null) {
-        final resolution = await conflictResolver.resolve(
+        final resolver = options?.conflictResolver ??
+            config.defaultConflictResolver ??
+            conflictResolver;
+        final resolution = await resolver.resolve(
           localItem: localItem,
           remoteItem: remoteItem,
           context: conflictContext,
@@ -840,7 +924,7 @@ class SyncEngine<T extends SyncableEntity> {
     }
   }
 
-  int _resolveBatchSize(SyncOptions? options) {
+  int _resolveBatchSize(SyncOptions<T>? options) {
     final override = options?.overrideBatchSize;
     if (override != null && override > 0) {
       return override;
@@ -856,7 +940,7 @@ class SyncEngine<T extends SyncableEntity> {
     }
   }
 
-  DateTime? _calculateDeadline(SyncOptions? options) {
+  DateTime? _calculateDeadline(SyncOptions<T>? options) {
     final durations = <Duration>[];
     if (config.syncTimeout > Duration.zero) {
       durations.add(config.syncTimeout);
@@ -938,6 +1022,17 @@ class SyncEngine<T extends SyncableEntity> {
       statusSubject.add(snapshot);
     }
   }
+}
+
+class _PushResult {
+  _PushResult({
+    required this.completed,
+    required this.failed,
+    required this.errors,
+  });
+  final int completed;
+  final int failed;
+  final List<Object> errors;
 }
 
 class _RemoteSyncSummary {

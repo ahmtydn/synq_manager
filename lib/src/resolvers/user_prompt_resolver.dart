@@ -40,12 +40,10 @@ class UserPromptResolver<T extends SyncableEntity>
         }
         return ConflictResolution.useRemote(remoteItem);
       case ResolutionStrategy.merge:
-        if (localItem != null) {
-          return ConflictResolution.merge(localItem);
-        }
-        if (remoteItem != null) {
-          return ConflictResolution.merge(remoteItem);
-        }
+        // Prefer local, fallback to remote if local is null.
+        final itemToMerge = localItem ?? remoteItem;
+        if (itemToMerge != null) return ConflictResolution.merge(itemToMerge);
+
         return ConflictResolution.abort('No data available to merge.');
       case ResolutionStrategy.askUser:
         return ConflictResolution.requireUserInput(

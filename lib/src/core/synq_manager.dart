@@ -16,7 +16,9 @@ import 'package:synq_manager/src/events/user_switch_event.dart';
 import 'package:synq_manager/src/metrics/synq_metrics.dart';
 import 'package:synq_manager/src/middleware/synq_middleware.dart';
 import 'package:synq_manager/src/models/change_detail.dart';
+import 'package:synq_manager/src/models/sync_metadata.dart';
 import 'package:synq_manager/src/models/sync_operation.dart';
+import 'package:synq_manager/src/models/sync_options.dart';
 import 'package:synq_manager/src/models/sync_result.dart';
 import 'package:synq_manager/src/models/sync_scope.dart';
 import 'package:synq_manager/src/models/syncable_entity.dart';
@@ -57,11 +59,11 @@ class SynqManager<T extends SyncableEntity> {
     required this.localAdapter,
     required this.remoteAdapter,
     SyncConflictResolver<T>? conflictResolver,
-    SynqConfig? synqConfig,
+    SynqConfig<T>? synqConfig,
     ConnectivityChecker? connectivity,
     SynqLogger? initialLogger,
   })  : _conflictResolver = conflictResolver ?? LastWriteWinsResolver<T>(),
-        _config = synqConfig ?? SynqConfig.defaultConfig(),
+        _config = synqConfig ?? SynqConfig<T>.defaultConfig(),
         _connectivityChecker = connectivity ?? ConnectivityChecker(),
         _logger = initialLogger ??
             SynqLogger(
@@ -77,7 +79,7 @@ class SynqManager<T extends SyncableEntity> {
   /// Adapter for remote data source operations.
   final RemoteAdapter<T> remoteAdapter;
   final SyncConflictResolver<T> _conflictResolver;
-  final SynqConfig _config;
+  final SynqConfig<T> _config;
   final ConnectivityChecker _connectivityChecker;
   final SynqLogger _logger;
 
@@ -86,6 +88,8 @@ class SynqManager<T extends SyncableEntity> {
       StreamController<SyncEvent<T>>.broadcast();
   final BehaviorSubject<SyncStatusSnapshot> _statusSubject =
       BehaviorSubject<SyncStatusSnapshot>();
+  final BehaviorSubject<SyncMetadata> _metadataSubject =
+      BehaviorSubject<SyncMetadata>();
   final List<SynqMiddleware<T>> _middlewares = [];
   final List<SynqObserver<T>> _observers = [];
   final Map<String, Timer> _autoSyncTimers = {};
@@ -150,6 +154,11 @@ class SynqManager<T extends SyncableEntity> {
   /// Stream of sync error events.
   Stream<SyncErrorEvent<T>> get onError =>
       eventStream.whereType<SyncErrorEvent<T>>();
+
+  /// Stream of sync metadata updates. Emits the latest metadata after each
+  /// successful sync cycle for a given user.
+  Stream<SyncMetadata> onMetadataChange(String userId) =>
+      _metadataSubject.stream.where((meta) => meta.userId == userId);
 
   /// Registers a middleware for data transformation pipeline.
   ///
@@ -290,6 +299,39 @@ class SynqManager<T extends SyncableEntity> {
         const Stream.empty();
   }
 
+  /// Returns a stream that emits the total number of entities, optionally
+  /// matching a query.
+  ///
+  /// This is more efficient than `watchAll().map((list) => list.length)`
+  /// as it avoids fetching and transforming the full list of entities.
+  /// Returns a stream of `0` if the adapter does not support this feature.
+  Stream<int> watchCount({SynqQuery? query, String? userId}) {
+    _ensureInitializedAndNotDisposed();
+    return localAdapter.watchCount(query: query, userId: userId) ??
+        Stream.value(0);
+  }
+
+  /// Returns a stream that emits the first entity matching a query,
+  /// optionally sorted by the adapter's implementation.
+  ///
+  /// Emits `null` if no matching entities are found.
+  /// Returns a stream of `null` if the adapter does not support this feature.
+  Stream<T?> watchFirst({SynqQuery? query, String? userId}) {
+    _ensureInitializedAndNotDisposed();
+    return localAdapter.watchFirst(query: query, userId: userId) ??
+        Stream.value(null);
+  }
+
+  /// Returns a stream that emits `true` if at least one entity exists
+  /// matching the query, and `false` otherwise.
+  ///
+  /// This is a convenience method built on top of [watchCount] and is highly
+  /// efficient for checking for the presence of data.
+  Stream<bool> watchExists({SynqQuery? query, String? userId}) {
+    _ensureInitializedAndNotDisposed();
+    return watchCount(query: query, userId: userId).map((count) => count > 0);
+  }
+
   /// Persists an entity to local storage and queues for remote synchronization.
   ///
   /// Creates a new entity if `item.id` doesn't exist, otherwise updates.
@@ -416,6 +458,44 @@ class SynqManager<T extends SyncableEntity> {
     }
   }
 
+  /// Persists an entity and immediately triggers a synchronization.
+  ///
+  /// A convenience method that combines [save] and [sync].
+  /// Returns the [SyncResult] from the subsequent synchronization.
+  Future<SyncResult> saveAndSync(
+    T item,
+    String userId, {
+    SyncOptions<T>? options,
+    SyncScope? scope,
+  }) async {
+    _ensureInitializedAndNotDisposed();
+    await save(item, userId);
+    return sync(
+      userId,
+      options: options,
+      scope: scope,
+    );
+  }
+
+  /// Removes an entity and immediately triggers a synchronization.
+  ///
+  /// A convenience method that combines [delete] and [sync].
+  /// Returns the [SyncResult] from the subsequent synchronization.
+  Future<SyncResult> deleteAndSync(
+    String id,
+    String userId, {
+    SyncOptions<T>? options,
+    SyncScope? scope,
+  }) async {
+    _ensureInitializedAndNotDisposed();
+    await delete(id, userId);
+    return sync(
+      userId,
+      options: options,
+      scope: scope,
+    );
+  }
+
   /// Executes a full synchronization cycle for the specified user.
   ///
   /// Pushes pending local changes to remote, then pulls remote changes.
@@ -426,7 +506,7 @@ class SynqManager<T extends SyncableEntity> {
   Future<SyncResult> sync(
     String userId, {
     bool force = false,
-    SyncOptions? options,
+    SyncOptions<T>? options,
     SyncScope? scope,
   }) async {
     _ensureInitializedAndNotDisposed();
@@ -662,6 +742,7 @@ class SynqManager<T extends SyncableEntity> {
       _processedChangeKeys.clear();
       _observers.clear();
       await _eventController.close();
+      await _metadataSubject.close();
       await _statusSubject.close();
       await _queueManager.dispose();
       await localAdapter.dispose();
@@ -703,6 +784,7 @@ class SynqManager<T extends SyncableEntity> {
       connectivityChecker: _connectivityChecker,
       eventController: _eventController,
       statusSubject: _statusSubject,
+      metadataSubject: _metadataSubject,
       middlewares: _middlewares,
     );
   }

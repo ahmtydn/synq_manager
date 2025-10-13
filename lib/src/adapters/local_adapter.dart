@@ -54,6 +54,21 @@ abstract class LocalAdapter<T extends SyncableEntity> {
     return null;
   }
 
+  /// Returns a stream that emits the total number of entities, optionally
+  /// matching a query.
+  ///
+  /// This can be more efficient than `watchAll().map((list) => list.length)`.
+  /// Return null if the adapter does not support this feature.
+  Stream<int>? watchCount({SynqQuery? query, String? userId}) {
+    return null;
+  }
+
+  /// Returns a stream that emits the first entity matching a query.
+  /// Emits `null` if no matching entities are found.
+  Stream<T?>? watchFirst({SynqQuery? query, String? userId}) {
+    return null;
+  }
+
   /// Fetch all items belonging to the given user.
   Future<List<T>> getAll({String? userId});
 

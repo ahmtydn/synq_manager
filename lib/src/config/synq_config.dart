@@ -1,3 +1,5 @@
+import 'package:synq_manager/synq_manager.dart';
+
 /// Strategies available when switching between users.
 enum UserSwitchStrategy {
   /// Clear local data and fetch fresh from remote.
@@ -14,7 +16,7 @@ enum UserSwitchStrategy {
 }
 
 /// Configuration for SynqManager behavior.
-class SynqConfig {
+class SynqConfig<T extends SyncableEntity> {
   /// Creates a sync configuration.
   const SynqConfig({
     this.autoSyncInterval = const Duration(minutes: 5),
@@ -22,14 +24,16 @@ class SynqConfig {
     this.maxRetries = 3,
     this.retryDelay = const Duration(seconds: 5),
     this.batchSize = 50,
+    this.defaultConflictResolver,
     this.defaultUserSwitchStrategy = UserSwitchStrategy.promptIfUnsyncedData,
+    this.defaultSyncDirection = SyncDirection.pushThenPull,
     this.syncTimeout = const Duration(minutes: 2),
     this.enableLogging = false,
     this.initialUserId,
   });
 
   /// Creates default configuration.
-  factory SynqConfig.defaultConfig() => const SynqConfig();
+  factory SynqConfig.defaultConfig() => SynqConfig<T>();
 
   /// Interval between automatic sync operations.
   final Duration autoSyncInterval;
@@ -48,8 +52,14 @@ class SynqConfig {
   /// Number of operations to sync in a single batch.
   final int batchSize;
 
+  /// Default conflict resolver. Can be overridden per-sync.
+  final SyncConflictResolver<T>? defaultConflictResolver;
+
   /// Default strategy for user switching.
   final UserSwitchStrategy defaultUserSwitchStrategy;
+
+  /// Default direction for synchronization.
+  final SyncDirection defaultSyncDirection;
 
   /// Timeout for sync operations.
   final Duration syncTimeout;
@@ -61,25 +71,30 @@ class SynqConfig {
   final String? initialUserId;
 
   /// Creates a copy with modified fields.
-  SynqConfig copyWith({
+  SynqConfig<T> copyWith({
     Duration? autoSyncInterval,
     bool? autoStartSync,
     int? maxRetries,
     Duration? retryDelay,
     int? batchSize,
+    SyncConflictResolver<T>? defaultConflictResolver,
     UserSwitchStrategy? defaultUserSwitchStrategy,
+    SyncDirection? defaultSyncDirection,
     Duration? syncTimeout,
     bool? enableLogging,
     String? initialUserId,
   }) {
-    return SynqConfig(
+    return SynqConfig<T>(
       autoSyncInterval: autoSyncInterval ?? this.autoSyncInterval,
       autoStartSync: autoStartSync ?? this.autoStartSync,
       maxRetries: maxRetries ?? this.maxRetries,
       retryDelay: retryDelay ?? this.retryDelay,
       batchSize: batchSize ?? this.batchSize,
+      defaultConflictResolver:
+          defaultConflictResolver ?? this.defaultConflictResolver,
       defaultUserSwitchStrategy:
           defaultUserSwitchStrategy ?? this.defaultUserSwitchStrategy,
+      defaultSyncDirection: defaultSyncDirection ?? this.defaultSyncDirection,
       syncTimeout: syncTimeout ?? this.syncTimeout,
       enableLogging: enableLogging ?? this.enableLogging,
       initialUserId: initialUserId ?? this.initialUserId,

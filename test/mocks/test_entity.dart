@@ -29,6 +29,21 @@ class TestEntity implements SyncableEntity {
         completed: json['completed'] as bool? ?? false,
       );
 
+  /// Creates a new [TestEntity] with default values for testing.
+  factory TestEntity.create(
+    String id,
+    String userId,
+    String name,
+  ) =>
+      TestEntity(
+        id: id,
+        userId: userId,
+        name: name,
+        value: 0,
+        modifiedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        version: 1,
+      );
   @override
   final String id;
 

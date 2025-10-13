@@ -235,6 +235,24 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   }
 
   @override
+  Stream<int>? watchCount({SynqQuery? query, String? userId}) {
+    final sourceStream = query != null
+        ? watchQuery(query, userId: userId)
+        : watchAll(userId: userId);
+
+    return sourceStream?.map((list) => list.length);
+  }
+
+  @override
+  Stream<T?>? watchFirst({SynqQuery? query, String? userId}) {
+    final sourceStream = query != null
+        ? watchQuery(query, userId: userId)
+        : watchAll(userId: userId);
+
+    return sourceStream?.map((list) => list.isNotEmpty ? list.first : null);
+  }
+
+  @override
   Future<R> transaction<R>(Future<R> Function() action) async {
     // This is a simplified mock transaction. It doesn't provide true rollback
     // for the in-memory map, but it allows testing the flow.

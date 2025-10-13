@@ -1,3 +1,12 @@
+/// Defines the order of operations during a synchronization cycle.
+enum SyncDirection {
+  /// Push local changes first, then pull remote changes. This is the default.
+  pushThenPull,
+
+  /// Pull remote changes first, then push local changes.
+  pullThenPush,
+}
+
 /// Defines a scope or filter for a synchronization operation.
 ///
 /// This allows for partial synchronization of data, such as fetching only

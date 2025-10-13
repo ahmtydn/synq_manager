@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:synq_manager/src/core/synq_observer.dart';
 import 'package:synq_manager/synq_manager.dart';
 
 import '../mocks/mock_adapters.dart';

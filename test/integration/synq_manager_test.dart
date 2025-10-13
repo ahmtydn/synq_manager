@@ -43,6 +43,14 @@ void main() {
         timestamp: DateTime(0),
       ),
     );
+    registerFallbackValue(
+      SyncMetadata(
+        userId: 'fb',
+        lastSyncTime: _fallbackDate,
+        dataHash: 'fb',
+        itemCount: 0,
+      ),
+    );
   });
 
   setUp(() async {
@@ -58,17 +66,39 @@ void main() {
         .thenAnswer((_) async => true);
     when(() => mockLocalAdapter.getById(any(), any()))
         .thenAnswer((_) async => null);
+    when(() => mockLocalAdapter.getByIds(any(), any()))
+        .thenAnswer((_) async => {});
+    when(() => mockLocalAdapter.getAll(userId: any(named: 'userId')))
+        .thenAnswer((_) async => []);
     when(() => mockLocalAdapter.getPendingOperations(any()))
         .thenAnswer((_) async => []);
     when(() => mockLocalAdapter.addPendingOperation(any(), any()))
+        .thenAnswer((_) async {});
+    when(() => mockLocalAdapter.updateSyncMetadata(any(), any()))
+        .thenAnswer((_) async {});
+    when(() => mockRemoteAdapter.updateSyncMetadata(any(), any()))
         .thenAnswer((_) async {});
     when(() => mockLocalAdapter.clearUserData(any())).thenAnswer((_) async {});
     when(() => mockLocalAdapter.changeStream())
         .thenAnswer((_) => const Stream.empty());
     when(() => mockRemoteAdapter.changeStream)
         .thenAnswer((_) => const Stream.empty());
+    when(() => mockRemoteAdapter.isConnected()).thenAnswer((_) async => true);
+
+    when(() => mockLocalAdapter.watchCount(
+        query: any(named: 'query'),
+        userId: any(named: 'userId'),),).thenAnswer((_) => Stream.value(0));
+    when(() => mockLocalAdapter.watchFirst(
+        query: any(named: 'query'),
+        userId: any(named: 'userId'),),).thenAnswer((_) => Stream.value(null));
+    when(() => mockRemoteAdapter.fetchAll(any(), scope: any(named: 'scope')))
+        .thenAnswer((_) async => []);
     when(() => mockLocalAdapter.name).thenReturn('MockedLocalAdapter');
     when(() => mockRemoteAdapter.name).thenReturn('MockedRemoteAdapter');
+    when(() => mockLocalAdapter.getSyncMetadata(any()))
+        .thenAnswer((_) async => null);
+    when(() => mockRemoteAdapter.getSyncMetadata(any()))
+        .thenAnswer((_) async => null);
 
     synqManager = SynqManager<TestEntity>(
       localAdapter: mockLocalAdapter,
@@ -332,8 +362,11 @@ void main() {
 
         // Assert: The switch failed and the completer was NOT completed
         expect(failResult.success, isFalse);
-        expect(completer.isCompleted, isFalse,
-            reason: 'No event should be emitted on failure.',);
+        expect(
+          completer.isCompleted,
+          isFalse,
+          reason: 'No event should be emitted on failure.',
+        );
 
         await subscription.cancel();
       });
@@ -348,5 +381,224 @@ void main() {
         );
       });
     });
+
+    group('SynqConfig Defaults', () {
+      test(
+          'uses defaultConflictResolver from SynqConfig during sync if not overridden',
+          () async {
+        // 1. Setup with a custom default resolver
+        final localWinsResolver = LocalPriorityResolver<TestEntity>();
+        final managerWithDefaultResolver = SynqManager<TestEntity>(
+          localAdapter: mockLocalAdapter,
+          remoteAdapter: mockRemoteAdapter,
+          connectivity: mockConnectivityChecker,
+          synqConfig: SynqConfig<TestEntity>(
+            defaultConflictResolver: localWinsResolver,
+          ),
+        );
+        await managerWithDefaultResolver.initialize();
+
+        // 2. Create a conflict scenario
+        final baseTime = DateTime.now();
+        final localEntity = TestEntity(
+          id: 'conflict-1',
+          userId: 'user1',
+          name: 'Local Wins',
+          value: 1,
+          modifiedAt: baseTime.add(const Duration(seconds: 1)),
+          createdAt: baseTime,
+          version: 2,
+        );
+        final remoteEntity = TestEntity(
+          id: 'conflict-1',
+          userId: 'user1',
+          name: 'Remote Loses',
+          value: 2,
+          modifiedAt: baseTime,
+          createdAt: baseTime,
+          version: 1,
+        );
+
+        // Setup mocks for the sync process
+        when(() => mockLocalAdapter.getById('conflict-1', 'user1'))
+            .thenAnswer((_) async => localEntity);
+        when(() => mockLocalAdapter.getByIds(['conflict-1'], 'user1'))
+            .thenAnswer((_) async => {'conflict-1': localEntity});
+        when(
+          () => mockRemoteAdapter.fetchAll('user1', scope: any(named: 'scope')),
+        ).thenAnswer((_) async => [remoteEntity]);
+        when(() => mockLocalAdapter.getPendingOperations('user1'))
+            .thenAnswer((_) async => []);
+        when(() => mockLocalAdapter.getAll(userId: 'user1'))
+            .thenAnswer((_) async => [localEntity]);
+        when(() => mockRemoteAdapter.push(any(), any()))
+            .thenAnswer((_) async => remoteEntity);
+
+        // 3. Act
+        final result = await managerWithDefaultResolver.sync('user1');
+
+        // 4. Assert
+        expect(result.conflictsResolved, 1);
+
+        // Verify that the remote was updated with the local version,
+        // proving LocalPriorityResolver was used.
+        final captured =
+            verify(() => mockRemoteAdapter.push(captureAny(), 'user1'))
+                .captured
+                .last as TestEntity;
+        expect(captured.name, 'Local Wins');
+
+        await managerWithDefaultResolver.dispose();
+      });
+
+      test(
+          'uses defaultSyncDirection from SynqConfig during sync if not overridden',
+          () async {
+        // 1. Setup with pullThenPush direction
+        final managerWithPullFirst = SynqManager<TestEntity>(
+          localAdapter: mockLocalAdapter,
+          remoteAdapter: mockRemoteAdapter,
+          connectivity: mockConnectivityChecker,
+          synqConfig: const SynqConfig(
+            defaultSyncDirection: SyncDirection.pullThenPush,
+          ),
+        );
+        await managerWithPullFirst.initialize();
+
+        // 2. Create a scenario with a pending local change
+        final pendingOp = SyncOperation<TestEntity>(
+          id: 'op1',
+          userId: 'user1',
+          entityId: 'e1',
+          type: SyncOperationType.create,
+          timestamp: DateTime.now(),
+          data: TestEntity(
+            id: 'e1',
+            userId: 'user1',
+            name: 'data',
+            value: 1,
+            modifiedAt: DateTime.now(),
+            createdAt: DateTime.now(),
+            version: 1,
+          ),
+        );
+        when(() => mockLocalAdapter.getPendingOperations('user1'))
+            .thenAnswer((_) async => [pendingOp]);
+        when(
+          () => mockRemoteAdapter.fetchAll('user1', scope: any(named: 'scope')),
+        ).thenAnswer((_) async => []);
+
+        // 3. Act
+        await managerWithPullFirst.sync('user1');
+
+        // 4. Assert the order of remote adapter calls
+        verifyInOrder([
+          () => mockRemoteAdapter.fetchAll('user1', scope: null),
+          () => mockRemoteAdapter.push(any(), 'user1'),
+        ]);
+
+        await managerWithPullFirst.dispose();
+      });
+      test('deleteAndSync passes options to sync call', () async {
+        // 1. Arrange
+        final entity = TestEntity.create('e1', 'user1', 'delete-and-sync');
+        when(() => mockLocalAdapter.getById(entity.id, 'user1'))
+            .thenAnswer((_) async => entity);
+        when(() => mockRemoteAdapter.deleteRemote(entity.id, 'user1'))
+            .thenAnswer((_) async {});
+
+        // 2. Act
+        await synqManager.deleteAndSync(
+          entity.id,
+          'user1',
+          options: const SyncOptions(forceFullSync: true),
+        );
+
+        // 3. Assert
+        // The key is that the sync call inside deleteAndSync receives the options.
+        // We can verify this by checking if fetchAll was called, which is triggered by forceFullSync.
+        verify(() => mockRemoteAdapter.fetchAll('user1', scope: null))
+            .called(1);
+      });
+    });
+
+    group('Advanced Watchers', () {
+      test('watchCount emits correct count of items', () async {
+        // Arrange
+        when(() => mockLocalAdapter.watchCount(userId: 'user1'))
+            .thenAnswer((_) => Stream.fromIterable([0, 1, 2, 1]));
+
+        // Act & Assert
+        final stream = synqManager.watchCount(userId: 'user1');
+        await expectLater(stream, emitsInOrder([0, 1, 2, 1]));
+      });
+
+      test('watchCount with query emits correct filtered count', () async {
+        // Arrange
+        const query = SynqQuery({'completed': true});
+        when(() => mockLocalAdapter.watchCount(query: query, userId: 'user1'))
+            .thenAnswer((_) => Stream.fromIterable([0, 1]));
+
+        // Act & Assert
+        final stream = synqManager.watchCount(query: query, userId: 'user1');
+        await expectLater(stream, emitsInOrder([0, 1]));
+      });
+
+      test('watchFirst emits the first matching item and null', () async {
+        // Arrange
+        final entity = TestEntity.create('e1', 'user1', 'First Item');
+        when(() => mockLocalAdapter.watchFirst(userId: 'user1'))
+            .thenAnswer((_) => Stream.fromIterable([null, entity, null]));
+
+        // Act & Assert
+        final stream = synqManager.watchFirst(userId: 'user1');
+        await expectLater(
+          stream,
+          emitsInOrder(
+            [
+              null,
+              isA<TestEntity>().having((e) => e.id, 'id', 'e1'),
+              null,
+            ],
+          ),
+        );
+      });
+
+      test('watchExists emits true when items exist, false otherwise',
+          () async {
+        // Arrange
+        // This test verifies the logic within SynqManager, so we mock the
+        // underlying watchCount stream it depends on.
+        when(() => mockLocalAdapter.watchCount(userId: 'user1'))
+            .thenAnswer((_) => Stream.fromIterable([0, 1, 5, 0]));
+
+        // Act & Assert
+        final stream = synqManager.watchExists(userId: 'user1');
+        await expectLater(stream, emitsInOrder([false, true, true, false]));
+      });
+
+      test('watchExists with query emits correct boolean stream', () async {
+        // Arrange
+        const query = SynqQuery({'isPriority': true});
+        when(() => mockLocalAdapter.watchCount(query: query, userId: 'user1'))
+            .thenAnswer((_) => Stream.fromIterable([0, 1, 0]));
+
+        // Act & Assert
+        final stream = synqManager.watchExists(query: query, userId: 'user1');
+        await expectLater(stream, emitsInOrder([false, true, false]));
+      });
+
+      test('watch methods return default stream if adapter returns null',
+          () async {
+        // Arrange
+        when(() => mockLocalAdapter.watchCount(userId: 'user1'))
+            .thenReturn(null);
+
+        // Act & Assert
+        await expectLater(synqManager.watchCount(userId: 'user1'), emits(0));
+      });
+    });
   });
 }
+
+final _fallbackDate = DateTime(2024);

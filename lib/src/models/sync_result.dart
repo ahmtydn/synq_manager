@@ -92,33 +92,6 @@ enum SyncStatus {
   completed,
 }
 
-/// Configuration passed when triggering manual synchronization.
-class SyncOptions {
-  /// Creates sync options.
-  const SyncOptions({
-    this.includeDeletes = true,
-    this.resolveConflicts = true,
-    this.forceFullSync = false,
-    this.overrideBatchSize,
-    this.timeout,
-  });
-
-  /// Whether to include delete operations.
-  final bool includeDeletes;
-
-  /// Whether to automatically resolve conflicts.
-  final bool resolveConflicts;
-
-  /// Whether to force a full sync.
-  final bool forceFullSync;
-
-  /// Custom batch size override.
-  final int? overrideBatchSize;
-
-  /// Timeout for sync operations.
-  final Duration? timeout;
-}
-
 /// Result produced after a sync cycle finishes.
 @immutable
 class SyncResult {

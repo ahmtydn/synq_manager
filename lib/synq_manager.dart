@@ -23,6 +23,7 @@ export 'src/models/error_recovery.dart';
 export 'src/models/exceptions.dart';
 export 'src/models/sync_metadata.dart';
 export 'src/models/sync_operation.dart';
+export 'src/models/sync_options.dart';
 export 'src/models/sync_result.dart';
 export 'src/models/sync_scope.dart';
 export 'src/models/syncable_entity.dart';
