@@ -7,6 +7,7 @@ export 'src/core/conflict_detector.dart';
 export 'src/core/queue_manager.dart';
 export 'src/core/sync_engine.dart';
 export 'src/core/synq_manager.dart';
+export 'src/core/synq_observer.dart';
 export 'src/events/conflict_event.dart';
 export 'src/events/data_change_event.dart';
 export 'src/events/initial_sync_event.dart';
