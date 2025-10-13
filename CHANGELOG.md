@@ -1,6 +1,7 @@
 # Changelog
 
 ## [2.2.0]
+
 ### Added
 - 🎧 **Reactive Queries**: Introduced `watchAll`, `watchById`, `watchQuery`, and `watchAllPaginated` on `SynqManager` to provide real-time, reactive streams of data. Your UI can now automatically update when underlying data changes.
 - 🎯 **Partial Synchronization**: New `SyncScope` model allows you to sync a subset of remote data (e.g., by date range), reducing network usage and sync time for large datasets.
@@ -10,22 +11,33 @@
 ### Improved
 - 🔄 **Per-Operation Retry Logic**: Sync operations that fail due to transient network errors are now individually retried up to a configurable limit (`maxRetries`), making synchronization more resilient. A single failed item no longer blocks the entire sync queue.
 - 🚀 **Example App**: The example app has been completely overhauled to use `StreamBuilder` and the new reactive query methods, demonstrating modern, real-time UI patterns.
-- Switching Tests**: Added robust integration tests for all `UserSwitchStrategy` options (`syncThenSwitch`, `clearAndFetch`, `promptIfUnsyncedData`).
+- **Switching Tests**: Added robust integration tests for all `UserSwitchStrategy` options (`syncThenSwitch`, `clearAndFetch`, `promptIfUnsyncedData`).
+- **User Switch Strategy Execution**: Improved user switch strategy execution by running it before initializing the new user, adding null checks, and enhancing error handling.
 
 ### Fixed
 - 🐛 **User Switching Strategy**: Corrected the logic for `promptIfUnsyncedData` to properly prevent user switching when unsynced data is present.
 - 🐛 **Connectivity Check**: Fixed a type error in `ConnectivityChecker` to correctly handle the `List<ConnectivityResult>` returned by `connectivity_plus: ^5.0.0` and newer, ensuring network status is detected correctly.
+- 🐛 **macOS Connectivity**: Corrected the plugin registration for `connectivity_plus` on macOS to use `ConnectivityPlusPlugin`.
 
 ### Changed
 - 🏗️ **Core Refactoring**: Exposed `localAdapter` and `remoteAdapter` publicly on `SynqManager` for easier access and customization in advanced scenarios.
 - ⚠️ **Exception Model**: Introduced `NetworkException` to better distinguish retryable network errors from other failures.
+- ♻️ **Conflict Detection**: Simplified conflict detection logic by removing an unnecessary time difference check and relying solely on version comparison.
+- 📦 **Dependencies**: Updated `build_runner`, `test`, `very_good_analysis`, and `mocktail` dependencies.
 
 ### Documentation
 - 📝 **Enhanced README**: Major updates to `README.md` to document the new reactive query APIs (`watchAll`, `watchById`) with clear examples.
 - 📖 **Example README**: Updated the example app's `README.md` to reflect its new reactive architecture.
+- 📝 **Sync Events**: Added detailed descriptions and `toString()` methods to all `SyncEvent` classes for easier debugging.
 
 ### Style
 - 💄 **Code Formatting**: Enforced an 80-character line length across the project for better readability.
+
+### Test
+- ✅ **Middleware Tests**: Added comprehensive tests for `SynqMiddleware`, covering all hooks like `transformBeforeSave`, `afterSync`, and `onConflict`.
+- ✅ **User Prompt Resolver Tests**: Added tests for `UserPromptResolver` covering all resolution scenarios.
+- ✅ **Sync Event Tests**: Added tests to verify the `toString()` output of all `SyncEvent` subclasses.
+- ✅ **SynqManager Tests**: Enhanced integration tests for `SynqManager` with better mocking for `save`, `delete`, and `switchUser` methods.
 
 ## [2.1.10]
 ### Added

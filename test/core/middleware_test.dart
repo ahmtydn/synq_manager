@@ -44,7 +44,7 @@ void main() {
             value: 0,
             modifiedAt: now,
             createdAt: now,
-            version: 1),
+            version: 1,),
       );
 
       registerFallbackValue(
