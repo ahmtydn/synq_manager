@@ -87,6 +87,28 @@ void main() {
           .called(1);
     });
 
+    test('onPartialUpdate is called on push() with changes', () async {
+      final original = TestEntity.create('obs-e3', 'user1', 'Original');
+      localAdapter.addLocalItem('user1', original);
+
+      final updated = original.copyWith(name: 'Updated');
+      await manager.push(updated, 'user1');
+
+      verify(
+        () => mockObserver.onPartialUpdate(
+          'obs-e3',
+          'user1',
+          any(
+            that: isA<Map<String, dynamic>>().having(
+              (map) => map.containsKey('name'),
+              'a map containing the key "name"',
+              true,
+            ),
+          ),
+        ),
+      ).called(1);
+    });
+
     test('onDeleteStart and onDeleteEnd are called on successful delete()',
         () async {
       final entity = TestEntity.create('obs-e2', 'user1', 'Observer Delete');

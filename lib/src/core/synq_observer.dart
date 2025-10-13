@@ -1,4 +1,3 @@
-import 'package:synq_manager/src/models/user_switch_strategy.dart';
 import 'package:synq_manager/synq_manager.dart';
 
 /// An observer class to monitor operations within [SynqManager].
@@ -21,6 +20,17 @@ abstract class SynqObserver<T extends SyncableEntity> {
   /// - [userId]: The ID of the user.
   /// - [source]: The origin of the save operation.
   void onPushEnd(T item, String userId, DataSource source) {}
+
+  /// Called when a `push` operation results in a partial update (a "delta").
+  ///
+  /// - [entityId]: The ID of the entity being updated.
+  /// - [userId]: The ID of the user.
+  /// - [delta]: A map of the fields that have changed.
+  void onPartialUpdate(
+    String entityId,
+    String userId,
+    Map<String, dynamic> delta,
+  ) {}
 
   /// Called at thebeginning of a `delete` operation.
   void onDeleteStart(String id, String userId) {}

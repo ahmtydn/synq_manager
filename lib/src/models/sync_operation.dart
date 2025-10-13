@@ -4,6 +4,18 @@ import 'package:synq_manager/synq_manager.dart';
 
 /// Represents a single operation (create, update, delete) to be synchronized.
 class SyncOperation<T extends SyncableEntity> {
+  /// Creates a [SyncOperation].
+  const SyncOperation({
+    required this.id,
+    required this.userId,
+    required this.entityId,
+    required this.type,
+    required this.timestamp,
+    this.data,
+    this.delta,
+    this.retryCount = 0,
+  }) : assert(retryCount >= 0, 'retryCount cannot be negative');
+
   /// Creates a [SyncOperation] from a map.
   ///
   /// Requires a `fromJsonT` function to deserialize the nested entity data.
@@ -36,18 +48,6 @@ class SyncOperation<T extends SyncableEntity> {
         json.decode(source) as Map<String, dynamic>,
         fromJsonT,
       );
-
-  /// Creates a [SyncOperation].
-  const SyncOperation({
-    required this.id,
-    required this.userId,
-    required this.entityId,
-    required this.type,
-    required this.timestamp,
-    this.data,
-    this.delta,
-    this.retryCount = 0,
-  }) : assert(retryCount >= 0, 'retryCount cannot be negative');
 
   /// A unique identifier for this operation.
   final String id;

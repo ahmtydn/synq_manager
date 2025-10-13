@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:synq_manager/src/migration/migration.dart';
 import 'package:synq_manager/synq_manager.dart';
 
 import '../mocks/mock_adapters.dart';

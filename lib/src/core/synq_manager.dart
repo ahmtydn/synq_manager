@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:crypto/crypto.dart';
 import 'package:synq_manager/src/core/migration_executor.dart';
-import 'package:synq_manager/src/models/user_switch_strategy.dart';
 import 'package:synq_manager/synq_manager.dart';
 import 'package:uuid/uuid.dart';
 
@@ -342,6 +341,11 @@ class SynqManager<T extends SyncableEntity> {
           );
           return transformed; // No-op if no fields changed
         }
+        _logger.debug(
+          'Delta update detected for entity ${item.id}. '
+          'Changes: ${delta.keys.join(', ')}',
+        );
+        _notifyObservers((o) => o.onPartialUpdate(item.id, userId, delta!));
       }
 
       _logger.debug('Saving transformed entity ${item.id} to local adapter');
