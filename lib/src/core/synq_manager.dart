@@ -56,9 +56,14 @@ class SynqManager<T extends SyncableEntity> {
   final StreamController<SyncEvent<T>> _eventController =
       StreamController<SyncEvent<T>>.broadcast();
   final BehaviorSubject<SyncStatusSnapshot> _statusSubject =
-      BehaviorSubject<SyncStatusSnapshot>();
+      BehaviorSubject.seeded(
+    SyncStatusSnapshot.initial(_uninitializedUserId),
+  );
   final BehaviorSubject<SyncMetadata> _metadataSubject =
       BehaviorSubject<SyncMetadata>();
+
+  // A unique, private constant to seed the status subject.
+  static const String _uninitializedUserId = '__uninitialized__';
   final List<SynqMiddleware<T>> _middlewares = [];
   final List<SynqObserver<T>> _observers = [];
   final Map<String, Timer> _autoSyncTimers = {};
@@ -68,9 +73,10 @@ class SynqManager<T extends SyncableEntity> {
 
   late final QueueManager<T> _queueManager;
   late final ConflictDetector<T> _conflictDetector;
+  final BehaviorSubject<SyncStatistics> _statisticsSubject =
+      BehaviorSubject<SyncStatistics>.seeded(const SyncStatistics());
 
   SyncEngine<T>? _syncEngine;
-  SyncStatistics _statistics = const SyncStatistics();
   bool _initialized = false;
   bool _disposed = false;
 
@@ -129,6 +135,20 @@ class SynqManager<T extends SyncableEntity> {
   /// successful sync cycle for a given user.
   Stream<SyncMetadata> onMetadataChange(String userId) =>
       _metadataSubject.stream.where((meta) => meta.userId == userId);
+
+  /// Returns a stream of sync status snapshots for the specified user.
+  ///
+  /// The stream emits a new snapshot whenever the sync status changes.
+  Stream<SyncStatusSnapshot> watchSyncStatus(String userId) {
+    _ensureInitializedAndNotDisposed();
+    unawaited(_ensureUserInitialized(userId));
+    return _statusSubject.stream.where((snapshot) => snapshot.userId == userId);
+  }
+
+  /// Returns a stream of cumulative synchronization statistics.
+  Stream<SyncStatistics> watchSyncStatistics() {
+    return _statisticsSubject.stream;
+  }
 
   /// Registers a middleware for data transformation pipeline.
   ///
@@ -597,7 +617,7 @@ class SynqManager<T extends SyncableEntity> {
   /// Note: Currently returns global statistics, not per-user.
   Future<SyncStatistics> getSyncStatistics(String userId) async {
     _ensureInitializedAndNotDisposed();
-    return _statistics;
+    return _statisticsSubject.value;
   }
 
   /// Switches the active user with configurable handling of unsynced data.
@@ -794,6 +814,7 @@ class SynqManager<T extends SyncableEntity> {
       await _eventController.close();
       await _metadataSubject.close();
       await _statusSubject.close();
+      await _statisticsSubject.close();
       await _queueManager.dispose();
       await localAdapter.dispose();
 
@@ -1019,24 +1040,26 @@ class SynqManager<T extends SyncableEntity> {
   }
 
   void _updateStatistics(SyncResult result) {
-    final totalSyncs = _statistics.totalSyncs + 1;
-    final totalDuration = _statistics.totalSyncDuration + result.duration;
+    final currentStats = _statisticsSubject.value;
+    final totalSyncs = currentStats.totalSyncs + 1;
+    final totalDuration = currentStats.totalSyncDuration + result.duration;
     final avgDuration = Duration(
       milliseconds: totalDuration.inMilliseconds ~/ totalSyncs,
     );
 
-    _statistics = _statistics.copyWith(
+    final newStats = currentStats.copyWith(
       totalSyncs: totalSyncs,
       successfulSyncs:
-          _statistics.successfulSyncs + (result.failedCount == 0 ? 1 : 0),
-      failedSyncs: _statistics.failedSyncs + (result.failedCount > 0 ? 1 : 0),
+          currentStats.successfulSyncs + (result.failedCount == 0 ? 1 : 0),
+      failedSyncs: currentStats.failedSyncs + (result.failedCount > 0 ? 1 : 0),
       conflictsDetected:
-          _statistics.conflictsDetected + result.conflictsResolved,
+          currentStats.conflictsDetected + result.conflictsResolved,
       conflictsAutoResolved:
-          _statistics.conflictsAutoResolved + result.conflictsResolved,
+          currentStats.conflictsAutoResolved + result.conflictsResolved,
       averageDuration: avgDuration,
       totalSyncDuration: totalDuration,
     );
+    _statisticsSubject.add(newStats);
   }
 
   Future<bool> _hasUnsyncedData(String? userId) async {
@@ -1125,6 +1148,7 @@ class SynqManager<T extends SyncableEntity> {
   Future<void> _ensureUserInitialized(String userId) async {
     try {
       await _queueManager.initializeUser(userId);
+      _syncEngine?.initializeUser(userId);
     } on Object catch (e, stack) {
       _logger.error('Failed to initialize user: $userId', stack);
       rethrow;

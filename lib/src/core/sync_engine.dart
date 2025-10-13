@@ -78,18 +78,20 @@ class SyncEngine<T extends SyncableEntity> {
 
     final stopwatch = Stopwatch()..start();
 
-    // Reset counters at the start of each sync
+    // Set status to syncing and reset counters for the new cycle in one step.
     _updateSnapshot(
       userId,
       (s) => s.copyWith(
+        status: SyncStatus.syncing,
         syncedCount: 0,
         conflictsResolved: 0,
         failedOperations: 0,
       ),
     );
-
-    _updateStatus(userId, SyncStatus.syncing);
     _notifyObservers((o) => o.onSyncStart(userId));
+    // Yield to the event loop to allow the 'syncing' status to be emitted
+    // and observed by listeners before proceeding.
+    await Future<void>.delayed(Duration.zero);
     await _notifyMiddlewares((m) => m.beforeSync(userId));
 
     try {
@@ -129,6 +131,7 @@ class SyncEngine<T extends SyncableEntity> {
       rethrow;
     } finally {
       stopwatch.stop();
+      // The status is already set to idle/failed in the try/catch blocks.
     }
   }
 
@@ -149,6 +152,16 @@ class SyncEngine<T extends SyncableEntity> {
 
   /// Gets the current sync status snapshot for a user.
   SyncStatusSnapshot getSnapshot(String userId) => _getSnapshot(userId);
+
+  /// Ensures a user has an initial status snapshot.
+  ///
+  /// If the user has no existing snapshot, an initial 'idle' one is created
+  /// and emitted.
+  void initializeUser(String userId) {
+    if (!_snapshots.containsKey(userId)) {
+      _updateSnapshot(userId, (s) => s); // This will create and emit initial
+    }
+  }
 
   Future<void> _pushChanges(String userId) async {
     // Create a copy of the pending list to iterate over. This prevents

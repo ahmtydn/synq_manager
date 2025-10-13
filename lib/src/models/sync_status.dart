@@ -96,6 +96,11 @@ class SyncStatusSnapshot {
       conflictsResolved: conflictsResolved ?? this.conflictsResolved,
     );
   }
+
+  @override
+  String toString() {
+    return 'SyncStatusSnapshot(userId: $userId, status: $status, pendingOperations: $pendingOperations, completedOperations: $completedOperations, failedOperations: $failedOperations, progress: $progress, lastStartedAt: $lastStartedAt, lastCompletedAt: $lastCompletedAt, errors: $errors, syncedCount: $syncedCount, conflictsResolved: $conflictsResolved)';
+  }
 }
 
 /// High level states for synchronization.
