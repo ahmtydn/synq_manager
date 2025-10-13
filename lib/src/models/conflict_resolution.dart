@@ -71,4 +71,9 @@ class ConflictResolution<T extends SyncableEntity> {
 
   /// Optional message about the resolution.
   final String? message;
+
+  @override
+  String toString() {
+    return 'ConflictResolution(strategy: $strategy, resolvedData: $resolvedData, requiresUserInput: $requiresUserInput, message: $message)';
+  }
 }

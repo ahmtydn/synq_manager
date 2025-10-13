@@ -1,4 +1,5 @@
 import 'package:meta/meta.dart';
+
 import 'package:synq_manager/src/models/conflict_resolution.dart';
 import 'package:synq_manager/src/models/sync_operation.dart';
 import 'package:synq_manager/src/models/sync_status.dart';
@@ -93,6 +94,11 @@ class SyncResult {
 
   /// Whether the sync was successful.
   bool get isSuccess => failedCount == 0 && !wasCancelled;
+
+  @override
+  String toString() {
+    return 'SyncResult(userId: $userId, syncedCount: $syncedCount, failedCount: $failedCount, conflictsResolved: $conflictsResolved, pendingOperations: $pendingOperations, duration: $duration, errors: $errors, wasCancelled: $wasCancelled)';
+  }
 }
 
 /// Aggregated statistics about multiple sync cycles.
@@ -157,6 +163,11 @@ class SyncStatistics {
       totalSyncDuration: totalSyncDuration ?? this.totalSyncDuration,
     );
   }
+
+  @override
+  String toString() {
+    return 'SyncStatistics(totalSyncs: $totalSyncs, successfulSyncs: $successfulSyncs, failedSyncs: $failedSyncs, conflictsDetected: $conflictsDetected, conflictsAutoResolved: $conflictsAutoResolved, conflictsUserResolved: $conflictsUserResolved, averageDuration: $averageDuration, totalSyncDuration: $totalSyncDuration)';
+  }
 }
 
 /// Description of a conflict encountered during a sync.
@@ -172,4 +183,8 @@ class SyncConflictSummary<T extends SyncableEntity> {
 
   /// ID of the entity involved in the conflict.
   final String entityId;
+
+  @override
+  String toString() =>
+      'SyncConflictSummary(resolution: $resolution, entityId: $entityId)';
 }
