@@ -847,8 +847,13 @@ if (await executor.needsMigration()) {
 final metadata = SyncMetadata(
   userId: 'user123',
   lastSyncTime: DateTime.now(),
+  entityName: 'tasks', // Name of the primary entity
+  itemCount: 42,       // Count for the primary entity
+  entityCounts: {      // Counts for all related entities
+    'tasks': 42,
+    'projects': 5,
+  },
   dataHash: 'abc123',
-  itemCount: 42,
   deviceId: 'device-xyz',
   customMetadata: {'customKey': 'customValue'},
 );
@@ -868,9 +873,11 @@ To store `SyncMetadata` in a remote SQL database, you can use a table like:
 CREATE TABLE sync_metadata (
   user_id TEXT PRIMARY KEY,
   last_sync_time TEXT NOT NULL,
-  data_hash TEXT NOT NULL,
+  entity_name TEXT,
+  data_hash TEXT,
   item_count INTEGER NOT NULL,
   device_id TEXT,
+  entity_counts JSONB,
   custom_metadata JSONB
 );
 ```
