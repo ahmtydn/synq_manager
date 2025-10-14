@@ -125,9 +125,11 @@ void main() {
 
       final remoteMetadata = remoteAdapter.metadataFor('user1');
       expect(remoteMetadata, isNotNull);
-      expect(remoteMetadata!.itemCount, 1);
-      expect(remoteMetadata.entityName, 'TestEntity');
-      expect(remoteMetadata.entityCounts, {'TestEntity': 1});
+      expect(remoteMetadata!.entityCounts, isNotNull);
+      expect(remoteMetadata.entityCounts!['TestEntity'], isNotNull);
+      expect(remoteMetadata.entityCounts!['TestEntity']!.count, 1);
+      expect(remoteMetadata.entityCounts!['TestEntity']!.hash, isNotEmpty);
+
       expect(remoteMetadata.dataHash?.isNotEmpty, isTrue);
 
       final pendingCount = await manager.getPendingCount('user1');

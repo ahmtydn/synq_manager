@@ -91,6 +91,7 @@ class QueueManager<T extends SyncableEntity> {
   Future<void> clear(String userId) async {
     _pendingByUser[userId]?.clear();
     _controllers[userId]?.add(const []);
+    await localAdapter.clearPendingOperations(userId);
   }
 
   /// Disposes resources.

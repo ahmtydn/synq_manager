@@ -125,6 +125,11 @@ class MemoryLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
   }
 
   @override
+  Future<void> clearPendingOperations(String userId) async {
+    _pendingOps.remove(userId);
+  }
+
+  @override
   Future<void> clearUserData(String userId) async {
     _storage.remove(userId);
     _pendingOps.remove(userId);

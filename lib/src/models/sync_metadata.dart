@@ -1,5 +1,50 @@
 import 'package:flutter/foundation.dart';
 
+/// Describes the synchronization state for a single entity type.
+@immutable
+class EntitySyncDetails {
+  /// Creates details for an entity's sync state.
+  const EntitySyncDetails({
+    required this.count,
+    this.hash,
+  });
+
+  /// Creates [EntitySyncDetails] from a map (JSON).
+  factory EntitySyncDetails.fromJson(Map<String, dynamic> json) {
+    return EntitySyncDetails(
+      count: json['count'] as int,
+      hash: json['hash'] as String?,
+    );
+  }
+
+  /// The total number of items for this entity.
+  final int count;
+
+  /// An optional hash of this entity's data for integrity checking.
+  final String? hash;
+
+  /// Converts to a map for JSON serialization.
+  Map<String, dynamic> toMap() => {
+        'count': count,
+        if (hash != null) 'hash': hash,
+      };
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+
+    return other is EntitySyncDetails &&
+        other.count == count &&
+        other.hash == hash;
+  }
+
+  @override
+  int get hashCode => Object.hash(count, hash);
+
+  @override
+  String toString() => 'EntitySyncDetails(count: $count, hash: $hash)';
+}
+
 /// Metadata describing the synchronization state for a specific user.
 @immutable
 class SyncMetadata {
@@ -7,9 +52,7 @@ class SyncMetadata {
   const SyncMetadata({
     required this.userId,
     required this.lastSyncTime,
-    this.entityName,
     this.dataHash,
-    this.itemCount = 0,
     this.deviceId,
     this.customMetadata,
     this.entityCounts,
@@ -20,14 +63,15 @@ class SyncMetadata {
     return SyncMetadata(
       userId: json['userId'] as String,
       lastSyncTime: DateTime.parse(json['lastSyncTime'] as String),
-      entityName: json['entityName'] as String?,
       dataHash: json['dataHash'] as String?,
-      itemCount: json['itemCount'] as int? ?? 0,
       deviceId: json['deviceId'] as String?,
       customMetadata: json['customMetadata'] as Map<String, dynamic>?,
       entityCounts: json['entityCounts'] != null
-          ? Map<String, int>.from(
-              json['entityCounts'] as Map,
+          ? (json['entityCounts'] as Map<String, dynamic>).map(
+              (key, value) => MapEntry(
+                key,
+                EntitySyncDetails.fromJson(value as Map<String, dynamic>),
+              ),
             )
           : null,
     );
@@ -39,14 +83,8 @@ class SyncMetadata {
   /// Timestamp of last synchronization.
   final DateTime lastSyncTime;
 
-  /// The name of the primary entity type this metadata describes (e.g., "tasks").
-  final String? entityName;
-
-  /// Hash of the data for integrity checking.
+  /// An optional global hash of all data for high-level integrity checking.
   final String? dataHash;
-
-  /// Number of items for the primary entity type.
-  final int itemCount;
 
   /// Optional device identifier.
   final String? deviceId;
@@ -56,25 +94,21 @@ class SyncMetadata {
 
   /// A map of counts for different entity types, allowing tracking of multiple
   /// "tables" or data collections.
-  /// Example: `{'tasks': 102, 'projects': 5}`
-  final Map<String, int>? entityCounts;
+  /// Example: `{'tasks': EntitySyncDetails(count: 102, hash: 'abc'), 'projects': EntitySyncDetails(count: 5, hash: 'def')}`
+  final Map<String, EntitySyncDetails>? entityCounts;
 
   /// Creates a copy with modified fields.
   SyncMetadata copyWith({
-    String? entityName,
     DateTime? lastSyncTime,
     String? dataHash,
-    int? itemCount,
     String? deviceId,
     Map<String, dynamic>? customMetadata,
-    Map<String, int>? entityCounts,
+    Map<String, EntitySyncDetails>? entityCounts,
   }) {
     return SyncMetadata(
       userId: userId,
-      entityName: entityName ?? this.entityName,
       lastSyncTime: lastSyncTime ?? this.lastSyncTime,
       dataHash: dataHash ?? this.dataHash,
-      itemCount: itemCount ?? this.itemCount,
       deviceId: deviceId ?? this.deviceId,
       customMetadata: customMetadata ?? this.customMetadata,
       entityCounts: entityCounts ?? this.entityCounts,
@@ -85,17 +119,17 @@ class SyncMetadata {
   Map<String, dynamic> toMap() => {
         'userId': userId,
         'lastSyncTime': lastSyncTime.toUtc().toIso8601String(),
-        if (entityName != null) 'entityName': entityName,
         if (dataHash != null) 'dataHash': dataHash,
-        'itemCount': itemCount,
         if (deviceId != null) 'deviceId': deviceId,
         if (customMetadata != null) 'customMetadata': customMetadata,
-        if (entityCounts != null) 'entityCounts': entityCounts,
+        if (entityCounts != null)
+          'entityCounts':
+              entityCounts!.map((key, value) => MapEntry(key, value.toMap())),
       };
 
   @override
   String toString() {
-    return 'SyncMetadata(userId: $userId, lastSyncTime: $lastSyncTime, entityName: $entityName, dataHash: $dataHash, itemCount: $itemCount, deviceId: $deviceId, customMetadata: $customMetadata, entityCounts: $entityCounts)';
+    return 'SyncMetadata(userId: $userId, lastSyncTime: $lastSyncTime, dataHash: $dataHash, deviceId: $deviceId, customMetadata: $customMetadata, entityCounts: $entityCounts)';
   }
 
   @override
@@ -104,10 +138,8 @@ class SyncMetadata {
 
     return other is SyncMetadata &&
         other.userId == userId &&
-        other.entityName == entityName &&
         other.lastSyncTime == lastSyncTime &&
         other.dataHash == dataHash &&
-        other.itemCount == itemCount &&
         other.deviceId == deviceId &&
         mapEquals(other.entityCounts, entityCounts) &&
         mapEquals(other.customMetadata, customMetadata);
@@ -117,10 +149,8 @@ class SyncMetadata {
   int get hashCode {
     return Object.hash(
       userId,
-      entityName,
       lastSyncTime,
       dataHash,
-      itemCount,
       deviceId,
       customMetadata,
       entityCounts,

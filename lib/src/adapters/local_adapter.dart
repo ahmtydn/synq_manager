@@ -123,6 +123,9 @@ abstract class LocalAdapter<T extends SyncableEntity> {
   /// Mark a pending operation as synced so it can be removed from the queue.
   Future<void> markAsSynced(String operationId);
 
+  /// Remove all pending sync operations for a given user.
+  Future<void> clearPendingOperations(String userId);
+
   /// Remove all local data associated with the provided user.
   Future<void> clearUserData(String userId);
 

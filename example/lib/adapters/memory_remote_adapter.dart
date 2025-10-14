@@ -126,8 +126,7 @@ class MemoryRemoteAdapter<T extends SyncableEntity>
       lastSyncTime: DateTime.now(),
       userId: userId,
       deviceId: 'demo-device',
-      dataHash: items.length.toString(),
-      itemCount: items.length,
+      entityCounts: {T.toString(): EntitySyncDetails(count: items.length)},
     );
     _remoteMetadata[userId] = derived;
     return derived;

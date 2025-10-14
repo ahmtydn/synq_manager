@@ -787,6 +787,82 @@ class SynqManager<T extends SyncableEntity> {
     return _queueManager.getPending(userId);
   }
 
+  /// Clears all pending operations for a user from the queue.
+  Future<void> clearPendingOperations(String userId) async {
+    _ensureInitializedAndNotDisposed();
+    await _queueManager.clear(userId);
+    _logger.info('Cleared all pending operations for user: $userId');
+  }
+
+  /// Checks if a full re-sync is recommended for a user by comparing local
+  /// and remote metadata.
+  ///
+  /// A full re-sync might be needed in cases of:
+  /// - The first sync for a user on a device (no local metadata).
+  /// - A mismatch in the global `dataHash`.
+  /// - A mismatch in entity-specific hashes or significant count discrepancies.
+  ///
+  /// Returns `true` if a full re-sync is recommended, `false` otherwise.
+  Future<bool> needsFullResync(String userId) async {
+    _ensureInitializedAndNotDisposed();
+
+    final local = await localAdapter.getSyncMetadata(userId);
+    final remote = await remoteAdapter.getSyncMetadata(userId);
+
+    // Scenario: No local history, treat as first sync.
+    if (local == null) {
+      _logger.info('Full re-sync needed for $userId: No local metadata found.');
+      return true;
+    }
+
+    // Scenario: No remote history, client is the source of truth. No re-sync needed.
+    if (remote == null) {
+      return false;
+    }
+
+    // Scenario: Global hash mismatch is a clear sign of divergence.
+    if (local.dataHash != null &&
+        remote.dataHash != null &&
+        local.dataHash != remote.dataHash) {
+      _logger.warn(
+        'Full re-sync needed for $userId: Global dataHash mismatch. '
+        'Local: ${local.dataHash}, Remote: ${remote.dataHash}',
+      );
+      return true;
+    }
+
+    // Scenario: Check individual entity counts and hashes.
+    if (remote.entityCounts != null) {
+      for (final entry in remote.entityCounts!.entries) {
+        final entityName = entry.key;
+        final remoteDetails = entry.value;
+        final localDetails = local.entityCounts?[entityName];
+
+        if (localDetails == null) {
+          // Local is missing an entire table that exists on remote.
+          _logger.warn(
+            'Full re-sync needed for $userId: Local metadata is missing '
+            'entity "$entityName" which exists on remote.',
+          );
+          return true;
+        }
+
+        // Hash mismatch for a specific table.
+        if (remoteDetails.hash != null &&
+            localDetails.hash != null &&
+            remoteDetails.hash != localDetails.hash) {
+          _logger.warn(
+            'Full re-sync needed for $userId: Hash mismatch for entity "$entityName". '
+            'Local: ${localDetails.hash}, Remote: ${remoteDetails.hash}',
+          );
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   /// Retries all failed synchronization operations by forcing a new sync.
   Future<void> retryFailedOperations(String userId) async {
     _ensureInitializedAndNotDisposed();

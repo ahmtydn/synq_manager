@@ -2,7 +2,9 @@ import 'package:synq_manager/synq_manager.dart';
 
 /// A handler for migration errors.
 typedef MigrationErrorHandler = Future<void> Function(
-    Object error, StackTrace stackTrace,);
+  Object error,
+  StackTrace stackTrace,
+);
 
 /// Configuration for [SynqManager].
 class SynqConfig<T extends SyncableEntity> {

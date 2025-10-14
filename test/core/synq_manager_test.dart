@@ -95,6 +95,10 @@ void main() {
       when(() => remoteAdapter.updateSyncMetadata(any(), any()))
           .thenAnswer((_) async {});
       when(() => localAdapter.markAsSynced(any())).thenAnswer((_) async {});
+      when(() => localAdapter.clearUserData(any())).thenAnswer((_) async {});
+      when(() => localAdapter.clearPendingOperations(any()))
+          .thenAnswer((_) async {});
+      when(() => localAdapter.push(any(), any())).thenAnswer((_) async {});
 
       manager = SynqManager<TestEntity>(
         localAdapter: localAdapter,
@@ -466,6 +470,182 @@ void main() {
         // Assert
         expect(stats.length, 1); // Only the initial event
         expect(stats.first.totalSyncs, 0);
+      });
+    });
+
+    group('needsFullResync', () {
+      final baseTime = DateTime.now();
+      final localMetadata = SyncMetadata(
+        userId: userId,
+        lastSyncTime: baseTime,
+        dataHash: 'hash123',
+        entityCounts: const {
+          'tasks': EntitySyncDetails(count: 10, hash: 'tasks_hash'),
+          'projects': EntitySyncDetails(count: 5, hash: 'projects_hash'),
+        },
+      );
+
+      test('returns true if local metadata is null', () async {
+        // Arrange
+        when(() => localAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => null);
+        when(() => remoteAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => localMetadata); // Remote has metadata
+
+        // Act
+        final needsResync = await manager.needsFullResync(userId);
+
+        // Assert
+        expect(needsResync, isTrue);
+      });
+
+      test('returns false if remote metadata is null', () async {
+        // Arrange
+        when(() => localAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => localMetadata);
+        when(() => remoteAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => null); // Remote has no metadata
+
+        // Act
+        final needsResync = await manager.needsFullResync(userId);
+
+        // Assert
+        expect(needsResync, isFalse);
+      });
+
+      test('returns true on global dataHash mismatch', () async {
+        // Arrange
+        final remoteMetadata = localMetadata.copyWith(dataHash: 'hash456');
+        when(() => localAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => localMetadata);
+        when(() => remoteAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => remoteMetadata);
+
+        // Act
+        final needsResync = await manager.needsFullResync(userId);
+
+        // Assert
+        expect(needsResync, isTrue);
+      });
+
+      test('returns true on entity-specific hash mismatch', () async {
+        // Arrange
+        final remoteMetadata = localMetadata.copyWith(
+          entityCounts: {
+            'tasks': const EntitySyncDetails(count: 10, hash: 'DIFFERENT_HASH'),
+            'projects':
+                const EntitySyncDetails(count: 5, hash: 'projects_hash'),
+          },
+        );
+        when(() => localAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => localMetadata);
+        when(() => remoteAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => remoteMetadata);
+
+        // Act
+        final needsResync = await manager.needsFullResync(userId);
+
+        // Assert
+        expect(needsResync, isTrue);
+      });
+
+      test('returns true if local metadata is missing an entity', () async {
+        // Arrange
+        final localMetadataMissingEntity = SyncMetadata(
+          userId: userId,
+          lastSyncTime: baseTime,
+          dataHash: 'hash123',
+          entityCounts: const {
+            'tasks': EntitySyncDetails(count: 10, hash: 'tasks_hash'),
+            // Missing 'projects'
+          },
+        );
+        when(() => localAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => localMetadataMissingEntity);
+        when(() => remoteAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => localMetadata); // Remote has both
+
+        // Act
+        final needsResync = await manager.needsFullResync(userId);
+
+        // Assert
+        expect(needsResync, isTrue);
+      });
+
+      test('returns false when metadata is identical', () async {
+        // Arrange
+        final remoteMetadata = localMetadata.copyWith(); // Identical copy
+        when(() => localAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => localMetadata);
+        when(() => remoteAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => remoteMetadata);
+
+        // Act
+        final needsResync = await manager.needsFullResync(userId);
+
+        // Assert
+        expect(needsResync, isFalse);
+      });
+    });
+
+    group('Automatic Full Re-sync', () {
+      test('performs a full re-sync when needsFullResync is true', () async {
+        // Arrange: Setup a scenario where a full re-sync is needed.
+        // For example, a mismatch in the global data hash.
+        final localMetadata = SyncMetadata(
+          userId: userId,
+          lastSyncTime: DateTime.now(),
+          dataHash: 'local_hash',
+        );
+        final remoteMetadata = localMetadata.copyWith(dataHash: 'remote_hash');
+
+        when(() => localAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => localMetadata);
+        when(() => remoteAdapter.getSyncMetadata(userId))
+            .thenAnswer((_) async => remoteMetadata);
+
+        // Remote has data that will be pulled after the re-sync.
+        final remoteEntity = TestEntity.create('e1', userId, 'Fresh Data');
+        when(() => remoteAdapter.fetchAll(userId, scope: any(named: 'scope')))
+            .thenAnswer((_) async => [remoteEntity]);
+
+        // After pull, local adapter will have the new data.
+        when(() => localAdapter.getAll(userId: userId))
+            .thenAnswer((_) async => [remoteEntity]);
+
+        // The "smart sync" logic would look like this:
+        Future<SyncResult> performSmartSync(String userId) async {
+          if (await manager.needsFullResync(userId)) {
+            // These are the key steps for a full re-sync.
+            await manager.localAdapter.clearUserData(userId);
+            await manager.clearPendingOperations(userId);
+          }
+          return manager.sync(userId);
+        }
+
+        // Act
+        final result = await performSmartSync(userId);
+
+        // Assert
+        // 1. Verify that the cleanup methods were called.
+        verify(() => localAdapter.clearUserData(userId)).called(1);
+        verify(() => localAdapter.clearPendingOperations(userId)).called(1);
+
+        // 2. Verify that the sync was still successful.
+        expect(result.isSuccess, isTrue);
+
+        // 3. Verify that the pull operation happened by checking the final
+        // state of the local adapter.
+        verify(
+          () => localAdapter.push(
+            any(that: predicate<TestEntity>((e) => e.name == 'Fresh Data')),
+            userId,
+          ),
+        ).called(1);
+
+        // 4. Verify that new metadata was generated and saved.
+        verify(() => localAdapter.updateSyncMetadata(any(), userId)).called(1);
+        verify(() => remoteAdapter.updateSyncMetadata(any(), userId)).called(1);
       });
     });
 

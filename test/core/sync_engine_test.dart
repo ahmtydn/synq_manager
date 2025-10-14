@@ -152,20 +152,71 @@ void main() {
       final metadata = await futureMetadata;
       expect(metadata, isA<SyncMetadata>());
       expect(metadata.userId, 'user-1');
+      expect(metadata.entityCounts, isNotNull);
+      expect(metadata.entityCounts!['TestEntity'], isNotNull);
       expect(
-        metadata.itemCount,
+        metadata.entityCounts!['TestEntity']!.count,
         1,
         reason:
             'Metadata should reflect the item count from localAdapter.getAll',
       );
-      expect(metadata.entityName, 'TestEntity');
-      expect(metadata.entityCounts, {'TestEntity': 1});
+      expect(
+        metadata.entityCounts!['TestEntity']!.hash,
+        isNotEmpty,
+        reason: 'Entity-specific hash should be generated',
+      );
+
       expect(metadata.dataHash, isNotEmpty);
       expect(
         metadata.lastSyncTime
             .isAfter(DateTime.now().subtract(const Duration(seconds: 5))),
         isTrue,
         reason: 'lastSyncTime should be recent',
+      );
+    });
+
+    test('correctly updates SyncMetadata after a pull operation', () async {
+      // Arrange: Remote has one item, local has none.
+      final remoteEntity = TestEntity.create('e1', 'user-1', 'Remote Item');
+      when(() => remoteAdapter.fetchAll('user-1', scope: any(named: 'scope')))
+          .thenAnswer((_) async => [remoteEntity]);
+
+      // After the pull, localAdapter.getAll will be called to generate metadata.
+      // It should now return the newly pulled item.
+      when(() => localAdapter.getAll(userId: 'user-1'))
+          .thenAnswer((_) async => [remoteEntity]);
+
+      // Act
+      await syncEngine.synchronize('user-1');
+
+      // Assert: Check the captured metadata.
+      // Capture the metadata that is saved to both local and remote adapters.
+      final capturedLocalMeta =
+          verify(() => localAdapter.updateSyncMetadata(captureAny(), 'user-1'))
+              .captured;
+      final capturedRemoteMeta =
+          verify(() => remoteAdapter.updateSyncMetadata(captureAny(), 'user-1'))
+              .captured;
+
+      // It should be called once for local and once for remote.
+      expect(capturedLocalMeta, hasLength(1));
+      expect(capturedRemoteMeta, hasLength(1));
+
+      final finalMetadata = capturedLocalMeta.first as SyncMetadata;
+      expect(finalMetadata.userId, 'user-1');
+      expect(finalMetadata.entityCounts, isNotNull);
+
+      final entityDetails = finalMetadata.entityCounts!['TestEntity'];
+      expect(entityDetails, isNotNull);
+      expect(
+        entityDetails!.count,
+        1,
+        reason: 'Metadata count should be 1 after pulling one item.',
+      );
+      expect(
+        entityDetails.hash,
+        'testhash',
+        reason: 'A new hash should be computed based on the new local state.',
       );
     });
   });

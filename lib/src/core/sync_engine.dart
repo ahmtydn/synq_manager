@@ -320,9 +320,9 @@ class SyncEngine<T extends SyncableEntity> {
       final newMetadata = SyncMetadata(
         userId: userId,
         lastSyncTime: DateTime.now(),
-        entityName: entityName,
-        itemCount: items.length,
-        entityCounts: {entityName: items.length},
+        entityCounts: {
+          entityName: EntitySyncDetails(count: items.length, hash: dataHash),
+        },
         dataHash: dataHash,
       );
       await localAdapter.updateSyncMetadata(newMetadata, userId);

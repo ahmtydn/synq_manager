@@ -216,14 +216,18 @@ void main() {
         userId: 'user1',
         lastSyncTime: baseTime,
         dataHash: 'hash1',
-        itemCount: 1,
+        entityCounts: const {
+          'TestEntity': EntitySyncDetails(count: 1, hash: 'hash1'),
+        },
       );
 
       final remoteMetadata = SyncMetadata(
         userId: 'user1',
         lastSyncTime: baseTime.add(const Duration(minutes: 1)),
         dataHash: 'hash2',
-        itemCount: 1,
+        entityCounts: const {
+          'TestEntity': EntitySyncDetails(count: 1, hash: 'hash2'),
+        },
       );
 
       final context = detector.detect(
