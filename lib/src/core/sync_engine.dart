@@ -65,6 +65,9 @@ class SyncEngine<T extends SyncableEntity> {
   /// The list of middlewares.
   final List<SynqMiddleware<T>> middlewares;
 
+  /// The name of the entity type this engine manages.
+  String get entityName => T.toString();
+
   final Map<String, SyncStatusSnapshot> _snapshots = {};
 
   /// Synchronizes data for a given user.
@@ -317,7 +320,9 @@ class SyncEngine<T extends SyncableEntity> {
       final newMetadata = SyncMetadata(
         userId: userId,
         lastSyncTime: DateTime.now(),
+        entityName: entityName,
         itemCount: items.length,
+        entityCounts: {entityName: items.length},
         dataHash: dataHash,
       );
       await localAdapter.updateSyncMetadata(newMetadata, userId);

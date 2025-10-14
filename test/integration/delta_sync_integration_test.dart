@@ -28,7 +28,6 @@ void main() {
           userId: 'fb',
           lastSyncTime: DateTime(0),
           dataHash: 'fb',
-          itemCount: 0,
         ),
       );
     });

@@ -28,7 +28,7 @@ void main() {
     // pumpAndSettle is better here to ensure the UI is stable. We give it a
     // generous timeout to account for async initialization.
     await tester.pumpAndSettle(
-        const Duration(seconds: 2), EnginePhase.sendSemanticsUpdate);
+        const Duration(seconds: 2),);
 
     // Verify that no tasks are displayed initially.
     expect(find.text('No tasks yet'), findsOneWidget);

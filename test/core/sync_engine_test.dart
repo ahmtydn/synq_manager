@@ -35,7 +35,6 @@ void main() {
           userId: 'fb',
           lastSyncTime: DateTime(0),
           dataHash: 'fb',
-          itemCount: 0,
         ),
       );
       registerFallbackValue(
@@ -159,6 +158,8 @@ void main() {
         reason:
             'Metadata should reflect the item count from localAdapter.getAll',
       );
+      expect(metadata.entityName, 'TestEntity');
+      expect(metadata.entityCounts, {'TestEntity': 1});
       expect(metadata.dataHash, isNotEmpty);
       expect(
         metadata.lastSyncTime

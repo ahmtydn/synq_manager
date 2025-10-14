@@ -85,7 +85,6 @@ void main() {
           userId: 'fallback',
           lastSyncTime: DateTime(0),
           dataHash: 'fallback',
-          itemCount: 0,
         ),
       );
     });
