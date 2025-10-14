@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:synq_manager/src/models/syncable_entity.dart';
+import 'package:synq_manager/synq_manager.dart';
 
 /// A mock entity for testing purposes.
 @immutable
@@ -71,7 +71,7 @@ class TestEntity implements SyncableEntity {
   final bool completed;
 
   @override
-  Map<String, dynamic> toMap() => {
+  Map<String, dynamic> toMap({MapTarget target = MapTarget.local}) => {
         'id': id,
         'userId': userId,
         'name': name,
@@ -138,9 +138,7 @@ class TestEntity implements SyncableEntity {
   Map<String, dynamic>? diff(SyncableEntity oldVersion) {
     if (oldVersion is! TestEntity) {
       // If types don't match, return the full object as a "diff"
-      return toMap()
-        ..remove('id')
-        ..remove('userId');
+      return toMap(target: MapTarget.remote);
     }
 
     final diffMap = <String, dynamic>{};

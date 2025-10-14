@@ -22,6 +22,7 @@ export 'src/models/conflict_context.dart';
 export 'src/models/conflict_resolution.dart';
 export 'src/models/error_recovery.dart';
 export 'src/models/exceptions.dart';
+export 'src/models/excludable_entity.dart';
 export 'src/models/sync_metadata.dart';
 export 'src/models/sync_operation.dart';
 export 'src/models/sync_options.dart';

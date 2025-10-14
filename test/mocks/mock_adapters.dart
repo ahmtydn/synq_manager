@@ -121,6 +121,11 @@ class MockLocalAdapter<T extends SyncableEntity> implements LocalAdapter<T> {
     return List.from(_pendingOps[userId] ?? []);
   }
 
+  /// Synchronously gets pending operations for a user. For testing only.
+  List<SyncOperation<T>> getPending(String userId) {
+    return _pendingOps[userId] ?? [];
+  }
+
   @override
   Future<void> addPendingOperation(
     String userId,

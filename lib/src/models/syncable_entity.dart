@@ -1,6 +1,15 @@
 import 'package:synq_manager/synq_manager.dart';
 
-/// An interface for entities that can be synchronized by [SynqManager].
+/// The target for serialization, allowing different fields for local vs. remote.
+enum MapTarget {
+  /// For serialization to the local database.
+  local,
+
+  /// For serialization to the remote data source.
+  remote,
+}
+
+/// Base class for all entities that can be synchronized by [SynqManager].
 abstract class SyncableEntity {
   /// A unique identifier for the entity.
   String get id;
@@ -20,12 +29,22 @@ abstract class SyncableEntity {
   /// A flag indicating if the entity is soft-deleted.
   bool get isDeleted;
 
-  /// Creates a map representation of the entity.
-  Map<String, dynamic> toMap();
+  /// Serializes the entity to a map.
+  Map<String, dynamic> toMap({MapTarget target = MapTarget.local});
 
   /// Creates a copy of the entity with updated fields.
-  SyncableEntity copyWith();
+  ///
+  /// This method is crucial for immutability. Instead of modifying an entity
+  /// directly, you create a new instance with the desired changes.
+  SyncableEntity copyWith({
+    DateTime? modifiedAt,
+    int? version,
+    bool? isDeleted,
+  });
 
-  /// Compares this entity with an older version and returns a map of changed fields.
+  /// Compares this entity with an older version and returns a map of the
+  /// fields that have changed.
+  ///
+  /// Returns `null` if there are no differences.
   Map<String, dynamic>? diff(SyncableEntity oldVersion);
 }

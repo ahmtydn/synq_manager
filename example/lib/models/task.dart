@@ -48,7 +48,7 @@ class Task implements SyncableEntity {
   final bool isDeleted;
 
   @override
-  Map<String, dynamic> toMap() => {
+  Map<String, dynamic> toMap({MapTarget target = MapTarget.local}) => {
         'id': id,
         'userId': userId,
         'title': title,

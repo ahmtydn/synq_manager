@@ -2,12 +2,11 @@ import 'dart:async';
 import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart';
 
 /// A command to compute a data hash.
 class _HashCommand {
   _HashCommand(this.itemMaps);
-  final List<Map<String, dynamic>> itemMaps;
+  final List<Map<String, dynamic>> itemMaps; // Already converted to maps
 }
 
 /// A message wrapper for isolate communication.
@@ -48,7 +47,7 @@ class IsolateHelper {
   Future<String> computeDataHash(List<Map<String, dynamic>> itemMaps) async {
     // If disabled for tests, compute directly on the main thread.
     if (disableForTests) {
-      return compute(_computeDataHash, itemMaps);
+      return _computeDataHash(itemMaps);
     }
 
     if (_sendPort == null) {
@@ -86,6 +85,8 @@ void _isolateEntryPoint(SendPort mainSendPort) {
 /// Computes a stable hash of data content.
 String _computeDataHash(List<Map<String, dynamic>> itemMaps) {
   if (itemMaps.isEmpty) return '';
-  final contentToHash = itemMaps.map((e) => e.toString()).join(',');
+  // The maps are already generated with the correct target (local)
+  // before being passed to the isolate.
+  final contentToHash = itemMaps.map((map) => map.toString()).join(',');
   return sha1.convert(contentToHash.codeUnits).toString();
 }
